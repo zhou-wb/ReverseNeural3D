@@ -8,3 +8,6 @@ The input RGBD image is processed to 8 masked images corresponding to 8 target p
 - `load_image.py:` Load rgb and depth image, convert them into masked images
 - `train.py:` Train reverse neural3d network
 - `reverse3d_prop.py:` Define reverse neural3d architecture
+
+## Dataset
+- https://rgbd-dataset.cs.washington.edu/dataset/rgbd-scenes-v2/
