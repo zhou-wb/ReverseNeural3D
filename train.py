@@ -47,9 +47,9 @@ time_str = str(datetime.now()).replace(' ', '-').replace(':', '-')
 writer = SummaryWriter(f'runs/{time_str}')
 
 for i in range(epoch):
-    print(f"----------第 {i+1} 轮训练开始----------")
+    print(f"----------Training Start (Epoch: {i+1})----------")
     
-    # 训练步骤开始
+    # training steps
     reverse_prop.train()
     for imgs in train_dataloader:
         imgs = imgs.cuda()
@@ -59,7 +59,7 @@ for i in range(epoch):
         
         writer.add_scalar("train_loss", loss.item(), total_train_step)
         
-        # 优化器优化模型
+        # optimization
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -67,13 +67,13 @@ for i in range(epoch):
         total_train_step = total_train_step + 1
         if (total_train_step) % 100 == 0:
             
-            print(f"训练次数 {total_train_step}, Loss: {loss.item()}")
+            print(f"Training Step {total_train_step}, Loss: {loss.item()}")
             
             for i in range(8):
                 writer.add_image(f'input_images_plane{i}', imgs.squeeze()[i,:,:], total_train_step, dataformats='HW')
                 writer.add_images(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='HW')
         
-    # 测试步骤
+    # test the model after every epoch
     reverse_prop.eval()
     total_test_loss = 0
     with torch.no_grad():
@@ -86,16 +86,16 @@ for i in range(epoch):
             total_test_loss += loss
             
             
-    print(f"整体测试集上的Loss: {total_test_loss}")
-    writer.add_scalar("test_loss", total_test_loss.item(), total_train_step)
+    print(f"Total Test Loss: {total_test_loss}")
+    writer.add_scalar("total_test_loss", total_test_loss.item(), total_train_step)
     
     
-    # 保存模型文件
+    # save model
     # path = f"runs/{time_str}/model/"
     # if not os.path.exists(path):
     #     os.makedirs(path) 
     # torch.save(reverse_prop, f"runs/{time_str}/model/reverse_3d_prop_{time_str}_{i}.pth")
-    # print("模型已保存")
+    # print("model saved!")
 
 
 # with torch.no_grad():
