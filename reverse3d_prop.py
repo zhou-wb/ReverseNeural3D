@@ -23,7 +23,7 @@ class Reverse3dProp(nn.Module):
         input = utils.pad_image(input, target_shape=(1280, 2048), pytorch=True, stacked_complex=False)
         input = utils.crop_image(input, target_shape=(1280, 2048), pytorch=True, stacked_complex=False)
         
-        slm_phase = self.reverse_cnn(input)      # input.shape = torch.Size([32, 1, 8, 1080, 1920])
+        slm_phase = self.reverse_cnn(input)      # input.shape = torch.Size([1, 8, 1080, 1920])
         
         slm_phase = utils.pad_image(slm_phase, target_shape=(1080,1920), pytorch=True, stacked_complex=False)
         slm_phase = utils.crop_image(slm_phase, target_shape=(1080,1920), pytorch=True, stacked_complex=False)

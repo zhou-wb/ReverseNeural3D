@@ -34,10 +34,10 @@ reverse_prop = Reverse3dProp()
 reverse_prop = reverse_prop.cuda()
 loss_fn = nn.MSELoss().cuda()
 
-learning_rate = 1e-2
+learning_rate = 1e-3
 optimizer = torch.optim.SGD(reverse_prop.parameters(), lr=learning_rate)
 
-epoch = 10
+epoch = 100000
 
 total_train_step = 0
 
@@ -46,8 +46,10 @@ time_str = str(datetime.now()).replace(' ', '-').replace(':', '-')
 # writer = SummaryWriter("./logs")
 writer = SummaryWriter(f'runs/{time_str}')
 
+writer.add_scalar("learning_rate", learning_rate)
+
 for i in range(epoch):
-    print(f"----------Training Start (Epoch: {i+1})----------")
+    print(f"----------Training Start (Epoch: {i+1})-------------")
     
     # training steps
     reverse_prop.train()
@@ -69,9 +71,10 @@ for i in range(epoch):
             
             print(f"Training Step {total_train_step}, Loss: {loss.item()}")
             
-            for i in range(8):
-                writer.add_image(f'input_images_plane{i}', imgs.squeeze()[i,:,:], total_train_step, dataformats='HW')
-                writer.add_images(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='HW')
+            if (total_train_step) % 700 == 0:
+                for i in range(8):
+                    writer.add_image(f'input_images_plane{i}', imgs.squeeze()[i,:,:], total_train_step, dataformats='HW')
+                    writer.add_images(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='HW')
         
     # test the model after every epoch
     reverse_prop.eval()
