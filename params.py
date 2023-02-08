@@ -111,6 +111,7 @@ def set_configs(opt):
     # set predefined model parameters
     forward_model_config(opt.prop_model, opt)
 
+    
     # wavelength, propagation distance (from SLM to midplane)
     if opt.channel is None:
         opt.chan_str = 'rgb'

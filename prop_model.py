@@ -21,6 +21,7 @@ import configargparse
 p = configargparse.ArgumentParser()
 params.add_parameters(p, 'eval')
 opt = p.parse_args()
+opt.channel = 1
 params.set_configs(opt)
 
 def CNNpropCNN_default():
@@ -237,7 +238,7 @@ class CNNpropCNN(PropModel):
                  plane_idxs=None):
         super(CNNpropCNN, self).__init__(roi_res=roi_res,
                                          plane_idxs=plane_idxs, loss_func=loss_func, lr=lr)
-
+    
         ##################
         # Model pipeline #
         ##################
