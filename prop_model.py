@@ -285,26 +285,26 @@ class CNNpropCNN(PropModel):
         #############################################################################################################
         # EDITED BY WENBIN
         # ASM network
-        asm_coord = 'rect'
-        asm_cnn_res = tuple(res if res % (2 ** num_downs_target) == 0 else
-                                res + (2 ** num_downs_target - res % (2 ** num_downs_target)) 
-                                for res in slm_res)
-        asm_input = Field2Input(asm_cnn_res, coord=asm_coord, shared_cnn=True)
-        input_nc_asm = 2
-        output_nc_asm = 2
-        num_downs_asm = 5
-        num_feats_asm_min = num_feats_slm_min
-        num_feats_asm_max = num_feats_slm_max
-        asm_cnn = UnetGenerator(input_nc=input_nc_asm, output_nc=output_nc_asm*8,
-                                    num_downs=num_downs_asm, nf0=num_feats_asm_min,
-                                    max_channels=num_feats_asm_max, norm_layer=norm, outer_skip=True)
-        init_weights(asm_cnn, init_type='normal')
+        # asm_coord = 'rect'
+        # asm_cnn_res = tuple(res if res % (2 ** num_downs_target) == 0 else
+        #                         res + (2 ** num_downs_target - res % (2 ** num_downs_target)) 
+        #                         for res in slm_res)
+        # asm_input = Field2Input(asm_cnn_res, coord=asm_coord, shared_cnn=True)
+        # input_nc_asm = 2
+        # output_nc_asm = 2
+        # num_downs_asm = 5
+        # num_feats_asm_min = num_feats_slm_min
+        # num_feats_asm_max = num_feats_slm_max
+        # asm_cnn = UnetGenerator(input_nc=input_nc_asm, output_nc=output_nc_asm*8,
+        #                             num_downs=num_downs_asm, nf0=num_feats_asm_min,
+        #                             max_channels=num_feats_asm_max, norm_layer=norm, outer_skip=True)
+        # init_weights(asm_cnn, init_type='normal')
 
         # shared target cnn requires permutation in channels here.
-        num_ch_output = 8
-        asm_output = Output2Field4ASM(slm_res, target_coord, num_ch_output=num_ch_output)
-        asm_cnns = [asm_input, asm_cnn, asm_output]
-        self.asm_cnn = nn.Sequential(*asm_cnns)
+        # num_ch_output = 8
+        # asm_output = Output2Field4ASM(slm_res, target_coord, num_ch_output=num_ch_output)
+        # asm_cnns = [asm_input, asm_cnn, asm_output]
+        # self.asm_cnn = nn.Sequential(*asm_cnns)
 
         #############################################################################################################
 
@@ -340,8 +340,6 @@ class CNNpropCNN(PropModel):
         if self.prop_wrp_target is not None:
             target_field = self.prop_wrp_target(wrp_field)  # Propagation from Intermediate plane to Target planes.
         
-        # target_field = self.asm_cnn(slm_field) # Propagation CNN from SLM to Target planes
-
         if self.target_cnn is not None:
             amp = self.target_cnn(target_field).abs()  # Applying CNN at Target planes.
             phase = target_field.angle()               # ? Phase here is using the result of asm propagation

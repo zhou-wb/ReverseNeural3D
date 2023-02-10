@@ -34,7 +34,7 @@ reverse_prop = Reverse3dProp()
 reverse_prop = reverse_prop.cuda()
 loss_fn = nn.MSELoss().cuda()
 
-learning_rate = 1e-3
+learning_rate = 1e-2
 optimizer = torch.optim.SGD(reverse_prop.parameters(), lr=learning_rate)
 
 epoch = 100000
@@ -53,11 +53,15 @@ for i in range(epoch):
     
     # training steps
     reverse_prop.train()
-    for imgs in train_dataloader:
+    for imgs_masks_id in train_dataloader:
+        imgs, masks, imgs_id = imgs_masks_id
         imgs = imgs.cuda()
+        masks = masks.cuda()
         outputs_field = reverse_prop(imgs)
         outputs_amp = outputs_field.abs()
-        loss = loss_fn(outputs_amp, imgs)
+        final_amp = outputs_amp*masks
+        
+        loss = loss_fn(final_amp, imgs)
         
         writer.add_scalar("train_loss", loss.item(), total_train_step)
         
@@ -72,6 +76,7 @@ for i in range(epoch):
             print(f"Training Step {total_train_step}, Loss: {loss.item()}")
             
             if (total_train_step) % 700 == 0:
+                writer.add_text('image id', imgs_id[0], total_train_step)
                 for i in range(8):
                     writer.add_image(f'input_images_plane{i}', imgs.squeeze()[i,:,:], total_train_step, dataformats='HW')
                     writer.add_images(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='HW')
@@ -80,12 +85,15 @@ for i in range(epoch):
     reverse_prop.eval()
     total_test_loss = 0
     with torch.no_grad():
-        for imgs in test_dataloader:
+        for imgs_masks_id in test_dataloader:
+            imgs, masks, imgs_id = imgs_masks_id
             imgs = imgs.cuda()
+            masks = masks.cuda()
             outputs_field = reverse_prop(imgs)
             outputs_amp = outputs_field.abs()
+            final_amp = outputs_amp * masks
             # outputs = reverse_prop(imgs)
-            loss = loss_fn(outputs_amp, imgs)
+            loss = loss_fn(final_amp, imgs)
             total_test_loss += loss
             
             
