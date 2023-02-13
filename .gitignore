@@ -3,3 +3,5 @@ data
 .vscode/
 runs/
 slm_phase/
+CNNpropCNN_model/
+draft.py

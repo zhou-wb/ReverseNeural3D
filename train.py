@@ -8,6 +8,7 @@ from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import os
+import utils
 
 
 img_dir = '/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01'
@@ -32,6 +33,8 @@ test_dataloader = DataLoader(test_data, batch_size=1)
 
 reverse_prop = Reverse3dProp()
 reverse_prop = reverse_prop.cuda()
+for param in reverse_prop.CNNpropCNN.parameters():
+    param.requires_grad = False
 loss_fn = nn.MSELoss().cuda()
 
 learning_rate = 1e-2
@@ -40,6 +43,8 @@ optimizer = torch.optim.SGD(reverse_prop.parameters(), lr=learning_rate)
 epoch = 100000
 
 total_train_step = 0
+best_test_loss = float('inf')
+best_test_psnr = 0
 
 # 添加tensorboard
 time_str = str(datetime.now()).replace(' ', '-').replace(':', '-')
@@ -62,8 +67,13 @@ for i in range(epoch):
         final_amp = outputs_amp*masks
         
         loss = loss_fn(final_amp, imgs)
+        a = utils.target_planes_to_one_image(final_amp, masks)
+        b = utils.target_planes_to_one_image(imgs, masks)
+        
+        psnr = utils.calculate_psnr(a, b)
         
         writer.add_scalar("train_loss", loss.item(), total_train_step)
+        writer.add_scalar("train_psnr", psnr.item(), total_train_step)
         
         # optimization
         optimizer.zero_grad()
@@ -84,6 +94,7 @@ for i in range(epoch):
     # test the model after every epoch
     reverse_prop.eval()
     total_test_loss = 0
+    test_items_count = 0
     with torch.no_grad():
         for imgs_masks_id in test_dataloader:
             imgs, masks, imgs_id = imgs_masks_id
@@ -95,19 +106,21 @@ for i in range(epoch):
             # outputs = reverse_prop(imgs)
             loss = loss_fn(final_amp, imgs)
             total_test_loss += loss
+            test_items_count += 1
+    average_test_loss = total_test_loss/test_items_count
+    if best_test_loss > average_test_loss:
+        best_test_loss = average_test_loss
+        # save model
+        path = f"runs/{time_str}/model/"
+        if not os.path.exists(path):
+            os.makedirs(path) 
+        torch.save(reverse_prop, f"runs/{time_str}/model/reverse_3d_prop_{time_str}_best_loss.pth")
+        print("model saved!")
             
-            
-    print(f"Total Test Loss: {total_test_loss}")
-    writer.add_scalar("total_test_loss", total_test_loss.item(), total_train_step)
+    print(f"Average Test Loss: {average_test_loss}")
+    writer.add_scalar("average_test_loss", average_test_loss.item(), total_train_step)
     
     
-    # save model
-    # path = f"runs/{time_str}/model/"
-    # if not os.path.exists(path):
-    #     os.makedirs(path) 
-    # torch.save(reverse_prop, f"runs/{time_str}/model/reverse_3d_prop_{time_str}_{i}.pth")
-    # print("model saved!")
-
 
 # with torch.no_grad():
 #     s = (final_amp * target_amp).mean() / \

@@ -18,6 +18,7 @@ from skimage.restoration import inpaint
 import kornia
 import torch.nn.functional as F
 import torch.fft as tfft
+import torchmetrics
 
 def roll_torch(tensor, shift: int, axis: int):
     if shift == 0:
@@ -439,3 +440,33 @@ def random_gen(num_planes=7, slm_type='ti'):
     plane_idx = random.choice(range(num_planes))
 
     return num_iters, phase_range, target_range, learning_rate, plane_idx
+
+
+################################################
+# Edited by Wenbin
+################################################
+def target_planes_to_one_image(target_planes_imgs, masks):
+    """
+    convert target planes images to a single image, each pixel is determined by its mask
+    
+    Input:
+    :target_planes_imgs: tensor with shape [B,N,W,H], N is the number of target planes, B is batch size
+    :masks: tensor with the same shape as target_planes_imgs
+    
+    Return:
+    return a tensor with shape [N, W, H]
+    """
+    return torch.sum(target_planes_imgs*masks, dim=1)
+
+def calculate_psnr(input_target_planes_imgs, generated_target_planes_imgs):
+    """
+    calculate psnr of input target planes images compared to generated target planes images
+    by torchmetrics
+    """
+    assert (input_target_planes_imgs.device==generated_target_planes_imgs.device)
+    psnr = torchmetrics.PeakSignalNoiseRatio()
+    psnr = psnr.to(input_target_planes_imgs.device)
+    return psnr(input_target_planes_imgs, generated_target_planes_imgs)
+    
+if __name__ == '__main__':
+    pass

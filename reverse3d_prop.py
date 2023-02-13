@@ -17,6 +17,8 @@ class Reverse3dProp(nn.Module):
         init_weights(self.reverse_cnn, init_type='normal')
         
         self.CNNpropCNN = CNNpropCNN_default()
+        
+        pass
     
     def forward(self, input):
         
