@@ -37,7 +37,7 @@ for param in reverse_prop.CNNpropCNN.parameters():
     param.requires_grad = False
 loss_fn = nn.MSELoss().cuda()
 
-learning_rate = 1e-2
+learning_rate = 1e-3
 optimizer = torch.optim.SGD(reverse_prop.parameters(), lr=learning_rate)
 
 epoch = 100000
