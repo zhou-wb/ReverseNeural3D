@@ -9,6 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import os
 import utils
+from prop_model import CNNpropCNN_default
 
 
 img_dir = '/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01'
@@ -33,11 +34,15 @@ test_dataloader = DataLoader(test_data, batch_size=1)
 
 reverse_prop = Reverse3dProp()
 reverse_prop = reverse_prop.cuda()
-for param in reverse_prop.CNNpropCNN.parameters():
+# for param in reverse_prop.CNNpropCNN.parameters():
+#     param.requires_grad = False
+forward_prop = CNNpropCNN_default()
+forward_prop = forward_prop.cuda()
+for param in forward_prop.parameters():
     param.requires_grad = False
 loss_fn = nn.MSELoss().cuda()
 
-learning_rate = 1e-3
+learning_rate = 1e-2
 optimizer = torch.optim.SGD(reverse_prop.parameters(), lr=learning_rate)
 
 epoch = 100000
@@ -62,7 +67,11 @@ for i in range(epoch):
         imgs, masks, imgs_id = imgs_masks_id
         imgs = imgs.cuda()
         masks = masks.cuda()
-        outputs_field = reverse_prop(imgs)
+        # outputs_field = reverse_prop(imgs)
+        # outputs_amp = outputs_field.abs()
+        # final_amp = outputs_amp*masks
+        slm_phase = reverse_prop(imgs)
+        outputs_field = forward_prop(slm_phase)
         outputs_amp = outputs_field.abs()
         final_amp = outputs_amp*masks
         
@@ -100,9 +109,15 @@ for i in range(epoch):
             imgs, masks, imgs_id = imgs_masks_id
             imgs = imgs.cuda()
             masks = masks.cuda()
-            outputs_field = reverse_prop(imgs)
+            # outputs_field = reverse_prop(imgs)
+            # outputs_amp = outputs_field.abs()
+            # final_amp = outputs_amp * masks
+            
+            slm_phase = reverse_prop(imgs)
+            outputs_field = forward_prop(slm_phase)
             outputs_amp = outputs_field.abs()
-            final_amp = outputs_amp * masks
+            final_amp = outputs_amp*masks
+            
             # outputs = reverse_prop(imgs)
             loss = loss_fn(final_amp, imgs)
             total_test_loss += loss

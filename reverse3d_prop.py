@@ -1,5 +1,5 @@
 from torch import nn
-from prop_model import CNNpropCNN_default
+# from prop_model import CNNpropCNN_default
 from unet import UnetGenerator, init_weights
 import utils
 
@@ -16,7 +16,7 @@ class Reverse3dProp(nn.Module):
                                     max_channels=num_feats_slm_max, norm_layer=norm, outer_skip=True)
         init_weights(self.reverse_cnn, init_type='normal')
         
-        self.CNNpropCNN = CNNpropCNN_default()
+        # self.CNNpropCNN = CNNpropCNN_default()
         
         pass
     
@@ -31,6 +31,6 @@ class Reverse3dProp(nn.Module):
         slm_phase = utils.crop_image(slm_phase, target_shape=(1080,1920), pytorch=True, stacked_complex=False)
 
         
-        reconstuct = self.CNNpropCNN(slm_phase)  
+        # reconstuct = self.CNNpropCNN(slm_phase)  
         
-        return reconstuct
+        return slm_phase
