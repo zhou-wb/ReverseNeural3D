@@ -42,6 +42,8 @@ for param in forward_prop.parameters():
     param.requires_grad = False
 loss_fn = nn.MSELoss().cuda()
 
+
+
 learning_rate = 1e-2
 optimizer = torch.optim.SGD(reverse_prop.parameters(), lr=learning_rate)
 
@@ -76,10 +78,12 @@ for i in range(epoch):
         final_amp = outputs_amp*masks
         
         loss = loss_fn(final_amp, imgs)
-        a = utils.target_planes_to_one_image(final_amp, masks)
-        b = utils.target_planes_to_one_image(imgs, masks)
         
-        psnr = utils.calculate_psnr(a, b)
+        # a = utils.target_planes_to_one_image(final_amp, masks)
+        # b = utils.target_planes_to_one_image(imgs, masks)
+        
+        with torch.no_grad(): 
+            psnr = utils.calculate_psnr(utils.target_planes_to_one_image(final_amp, masks), utils.target_planes_to_one_image(imgs, masks))
         
         writer.add_scalar("train_loss", loss.item(), total_train_step)
         writer.add_scalar("train_psnr", psnr.item(), total_train_step)
@@ -103,6 +107,7 @@ for i in range(epoch):
     # test the model after every epoch
     reverse_prop.eval()
     total_test_loss = 0
+    total_test_psnr = 0
     test_items_count = 0
     with torch.no_grad():
         for imgs_masks_id in test_dataloader:
@@ -120,20 +125,27 @@ for i in range(epoch):
             
             # outputs = reverse_prop(imgs)
             loss = loss_fn(final_amp, imgs)
+            psnr = utils.calculate_psnr(utils.target_planes_to_one_image(final_amp, masks), utils.target_planes_to_one_image(imgs, masks))
+            
             total_test_loss += loss
+            total_test_psnr += psnr
             test_items_count += 1
-    average_test_loss = total_test_loss/test_items_count
-    if best_test_loss > average_test_loss:
-        best_test_loss = average_test_loss
-        # save model
-        path = f"runs/{time_str}/model/"
-        if not os.path.exists(path):
-            os.makedirs(path) 
-        torch.save(reverse_prop, f"runs/{time_str}/model/reverse_3d_prop_{time_str}_best_loss.pth")
-        print("model saved!")
+        
+        average_test_loss = total_test_loss/test_items_count
+        average_test_psnr = total_test_psnr/test_items_count
+        if best_test_loss > average_test_loss:
+            best_test_loss = average_test_loss
+            # save model
+            path = f"runs/{time_str}/model/"
+            if not os.path.exists(path):
+                os.makedirs(path) 
+            torch.save(reverse_prop, f"runs/{time_str}/model/reverse_3d_prop_{time_str}_best_loss.pth")
+            print("model saved!")
             
     print(f"Average Test Loss: {average_test_loss}")
+    print(f"Average Test PSNR: {average_test_psnr}")
     writer.add_scalar("average_test_loss", average_test_loss.item(), total_train_step)
+    writer.add_scalar("average_test_psnr", average_test_psnr.item(), total_train_step)
     
     
 
