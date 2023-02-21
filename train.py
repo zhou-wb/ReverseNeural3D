@@ -19,8 +19,15 @@ tf = transforms.Compose([
     ToTensor()
 ])
 nyu_dataset = LSHMV_RGBD_Object_Dataset('/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01',
-                                   color_transform=tf, depth_transform=tf,
-                                   channel=1, output_type='mask')
+                                        color_transform=tf, depth_transform=tf,
+                                        channel=1, output_type='mask')
+
+for i in range(2, 15):
+    scene_name = 'scene_' + str(i).zfill(2)
+    nyu_dataset += LSHMV_RGBD_Object_Dataset('/home/wenbin/Downloads/rgbd-scenes-v2/imgs/'+scene_name,
+                                             color_transform=tf, depth_transform=tf,
+                                             channel=1, output_type='mask')
+    
     
 train_data_size = int(0.8*len(nyu_dataset))
 test_data_size = len(nyu_dataset)-train_data_size

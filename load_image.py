@@ -62,7 +62,7 @@ class LSHMV_RGBD_Object_Dataset(Dataset):
         elif self.output_type == 'mask':
             depth_image = self.depth_convert(depth_image)
             masks = self.load_img_mask(depth_image)
-            return (color_image*masks).squeeze(), masks, self.color_list[idx]
+            return (color_image*masks).squeeze(), masks, self.img_dir.split('/')[-1]+'-'+self.color_list[idx]
         else:
             raise RuntimeError("Undefined output_type, can only be chosen from 'color_depth', 'field', 'mask'")
     
