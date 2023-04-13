@@ -86,6 +86,9 @@ class LSHMV_RGBD_Object_Dataset(Dataset):
 
         self.virtual_depth_planes = [0.0, 0.08417508417508479, 0.14124293785310726, 0.24299599771297942, 0.3171856978085348, 0.4155730533683304, 0.5319148936170226, 0.6112104949314254]
         
+        # for 4 planes
+        self.virtual_depth_planes = self.virtual_depth_planes[::2]
+        
         depth_planes_D = self.virtual_depth_planes
         depthmap_virtual_D = depth
         

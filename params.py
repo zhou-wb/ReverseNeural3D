@@ -128,6 +128,14 @@ def set_configs(opt):
 
     # propagation distances from the wavefront recording plane
     opt.prop_dists_from_wrp = [p - opt.prop_dist for p in opt.prop_dists_rgb[opt.channel]]
+    
+    #########################################
+    # edited by Wenbin
+    opt.prop_dists_from_wrp = opt.prop_dists_from_wrp[::2]
+        
+    # finish editing
+    #########################################
+    
     opt.physical_depth_planes = [p - opt.prop_dist_green for p in opt.prop_dists_physical]
     opt.virtual_depth_planes = utils.prop_dist_to_diopter(opt.physical_depth_planes,
                                                           opt.eyepiece,
@@ -265,6 +273,14 @@ def optics_config(setup_type, opt):
         opt.roi_res = (960, 1680)  # regions of interest (to penalize for SGD)
         opt.training_plane_idxs = [0, 1, 3, 4, 5, 6, 7]
         opt.heldout_plane_idxs = [2]
+        #######################################
+        # Edited by Wenbin
+        opt.training_plane_idxs = [0, 1, 2, 3]
+        opt.heldout_plane_idxs = []
+        
+        # Finish Editing
+        #######################################
+                
         opt.mid_idx = 4  # intermediate plane as 1.5D
     elif setup_type in ('sigasia2021_ar'):
         opt.laser_type = 'ar_green_only'
