@@ -131,7 +131,7 @@ def set_configs(opt):
     
     #########################################
     # edited by Wenbin
-    opt.prop_dists_from_wrp = opt.prop_dists_from_wrp[::2]
+    # opt.prop_dists_from_wrp = opt.prop_dists_from_wrp[::2]
         
     # finish editing
     #########################################
@@ -275,8 +275,8 @@ def optics_config(setup_type, opt):
         opt.heldout_plane_idxs = [2]
         #######################################
         # Edited by Wenbin
-        opt.training_plane_idxs = [0, 1, 2, 3]
-        opt.heldout_plane_idxs = []
+        # opt.training_plane_idxs = [0, 1, 2, 3]
+        # opt.heldout_plane_idxs = []
         
         # Finish Editing
         #######################################

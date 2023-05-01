@@ -72,11 +72,17 @@ class LSHMV_RGBD_Object_Dataset(Dataset):
         # convert to double
         depth = depth.double()
         # convert mm to m
-        depth = depth/1000
+        # depth = depth/1000
         # this gives us decent depth distribution with 120mm eyepiece setting.
-        depth /= 2.5
+        # depth /= 2.5
         # meter to diopter conversion
         depth = 1 / (depth + 1e-20)
+        
+        value, _ = torch.sort(torch.flatten(depth))
+        top10_value = value[int(-len(value)*0.008)]
+        top1_value = value[-1]
+        resize_factor = top10_value / 0.61
+        depth = depth / resize_factor
         
         # depth = depth.unsqueeze(0)
         return depth
@@ -87,7 +93,7 @@ class LSHMV_RGBD_Object_Dataset(Dataset):
         self.virtual_depth_planes = [0.0, 0.08417508417508479, 0.14124293785310726, 0.24299599771297942, 0.3171856978085348, 0.4155730533683304, 0.5319148936170226, 0.6112104949314254]
         
         # for 4 planes
-        self.virtual_depth_planes = self.virtual_depth_planes[::2]
+        # self.virtual_depth_planes = self.virtual_depth_planes[::2]
         
         depth_planes_D = self.virtual_depth_planes
         depthmap_virtual_D = depth

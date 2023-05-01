@@ -107,7 +107,7 @@ for i in range(epoch):
             
             if (total_train_step) % 700 == 0:
                 writer.add_text('image id', imgs_id[0], total_train_step)
-                for i in range(4):
+                for i in range(8):
                     writer.add_image(f'input_images_plane{i}', imgs.squeeze()[i,:,:], total_train_step, dataformats='HW')
                     writer.add_images(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='HW')
         
