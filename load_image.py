@@ -5,6 +5,11 @@ from torchvision.io import read_image
 from PIL import Image
 from torchvision import transforms
 
+import utils
+import numpy as np
+from skimage.transform import resize
+from torchvision.transforms.functional import resize as resize_tensor
+
 # NYU Depth Dataset V2
 # https://cs.nyu.edu/~silberman/datasets/nyu_depth_v2.html
 
@@ -135,6 +140,51 @@ class LSHMV_RGBD_Object_Dataset(Dataset):
 
         return masks.squeeze()
         
+
+
+    def resize_keep_aspect(image, target_res, pad=False, lf=False, pytorch=False):
+        """Resizes image to the target_res while keeping aspect ratio by cropping
+
+        image: an 3d array with dims [channel, height, width]
+        target_res: [height, width]
+        pad: if True, will pad zeros instead of cropping to preserve aspect ratio
+        """
+        im_res = image.shape[-2:]
+
+        # finds the resolution needed for either dimension to have the target aspect
+        # ratio, when the other is kept constant. If the image doesn't have the
+        # target ratio, then one of these two will be larger, and the other smaller,
+        # than the current image dimensions
+        resized_res = (int(np.ceil(im_res[1] * target_res[0] / target_res[1])),
+                    int(np.ceil(im_res[0] * target_res[1] / target_res[0])))
+
+        # only pads smaller or crops larger dims, meaning that the resulting image
+        # size will be the target aspect ratio after a single pad/crop to the
+        # resized_res dimensions
+        if pad:
+            image = utils.pad_image(image, resized_res, pytorch=False)
+        else:
+            image = utils.crop_image(image, resized_res, pytorch=False, lf=lf)
+
+        # switch to numpy channel dim convention, resize, switch back
+        if lf or pytorch:
+            image = resize_tensor(image, target_res)
+            return image
+        else:
+            image = np.transpose(image, axes=(1, 2, 0))
+            image = resize(image, target_res, mode='reflect')
+            return np.transpose(image, axes=(2, 0, 1))
+
+
+    def pad_crop_to_res(image, target_res, pytorch=False):
+        """Pads with 0 and crops as needed to force image to be target_res
+
+        image: an array with dims [..., channel, height, width]
+        target_res: [height, width]
+        """
+        return utils.crop_image(utils.pad_image(image,
+                                                target_res, pytorch=pytorch, stacked_complex=False),
+                                target_res, pytorch=pytorch, stacked_complex=False)
 
 
 if __name__ == '__main__':

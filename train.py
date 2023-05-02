@@ -14,8 +14,11 @@ from prop_model import CNNpropCNN_default
 
 img_dir = '/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01'
 
+image_res = (1080, 1920)
+roi_res = (960, 1680)
+
 tf = transforms.Compose([
-    Resize((1080,1920)),
+    Resize(image_res),
     ToTensor()
 ])
 nyu_dataset = LSHMV_RGBD_Object_Dataset('/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01',
@@ -76,13 +79,24 @@ for i in range(epoch):
         imgs, masks, imgs_id = imgs_masks_id
         imgs = imgs.cuda()
         masks = masks.cuda()
+        masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
         # outputs_field = reverse_prop(imgs)
         # outputs_amp = outputs_field.abs()
         # final_amp = outputs_amp*masks
         slm_phase = reverse_prop(imgs)
         outputs_field = forward_prop(slm_phase)
+        
+        outputs_field = utils.crop_image(outputs_field, roi_res, stacked_complex=False)
+        
         outputs_amp = outputs_field.abs()
         final_amp = outputs_amp*masks
+        
+        imgs = utils.crop_image(imgs, roi_res, stacked_complex=False) # need to check if process before network or only before loss 
+        
+        # with torch.no_grad():
+        #     s = (final_amp * imgs).mean() / \
+        #         (final_amp ** 2).mean()  # scale minimizing MSE btw recon and
+        # loss = loss_fn(s * final_amp, imgs)
         
         loss = loss_fn(final_amp, imgs)
         
