@@ -86,6 +86,7 @@ for i in range(epoch):
         slm_phase = reverse_prop(imgs)
         outputs_field = forward_prop(slm_phase)
         
+        
         outputs_field = utils.crop_image(outputs_field, roi_res, stacked_complex=False)
         
         outputs_amp = outputs_field.abs()

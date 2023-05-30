@@ -2,6 +2,7 @@ from torch import nn
 # from prop_model import CNNpropCNN_default
 from unet import UnetGenerator, init_weights
 import utils
+from torchsummary import summary
 
 class Reverse3dProp(nn.Module):
     def __init__(self) -> None:
@@ -34,3 +35,9 @@ class Reverse3dProp(nn.Module):
         # reconstuct = self.CNNpropCNN(slm_phase)  
         
         return slm_phase
+
+
+if __name__ == '__main__':
+    reverse_prop = Reverse3dProp()
+    reverse_prop = reverse_prop.cuda()
+    summary(reverse_prop, (8, 1080, 1920))
