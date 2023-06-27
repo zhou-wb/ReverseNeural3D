@@ -51,8 +51,9 @@ n_samples = 500
 indices = np.random.choice(len(nyu_dataset), n_samples, replace=False)
 for rgb_img, depth_img in tqdm(Subset(nyu_dataset, indices)):
 # for rgb_img, depth_img in tqdm(nyu_dataset):
-    depth_img = depth_convert(depth_img)
-    hist, bin_edges = compute_histogram(depth_img, num_of_planes, range=(0, 0.61))
+    # depth_img = depth_convert(depth_img)
+    # hist, bin_edges = compute_histogram(depth_img, num_of_planes, range=(0, 0.61))
+    hist, bin_edges = compute_histogram(depth_img, num_of_planes)
     sum_hist = [a + b for a, b in zip(sum_hist, hist)]
 
 # hist, bin_edges = compute_histogram(nyu_dataset[0][1], num_of_planes, range=(0, 30000))

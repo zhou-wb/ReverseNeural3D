@@ -15,6 +15,9 @@ from torchvision.transforms.functional import resize as resize_tensor
 
 # A Large-Scale Hierarchical Multi-View RGB-D Object Dataset
 # https://rgbd-dataset.cs.washington.edu/dataset/rgbd-dataset_full/
+
+# Washington Scenes V2
+# https://rgbd-dataset.cs.washington.edu/dataset/rgbd-scenes-v2/
 class LSHMV_RGBD_Object_Dataset(Dataset):
     def __init__(self, img_dir, color_transform=None, depth_transform=None, output_type='color_depth', channel=None):
         '''
