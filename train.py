@@ -10,6 +10,25 @@ from datetime import datetime
 import os
 import utils
 from prop_model import CNNpropCNN_default
+import prop_ideal
+
+from propagation_ASM import propagation_ASM
+from algorithm import DPAC
+
+torch.autograd.set_detect_anomaly(True)
+
+prop_dist = 0.0044
+prop_dists_from_wrp = [-0.0044, -0.0032000000000000006, -0.0024000000000000002, -0.0010000000000000005, 0.0, 0.0013, 0.0028000000000000004, 0.0037999999999999987]
+# opt.virtual_depth_planes = [0.0, 0.08417508417508479, 0.14124293785310726, 0.24299599771297942, 0.3171856978085348, 0.4155730533683304, 0.5319148936170226, 0.6112104949314254]
+# prop_dists_from_wrp = [prop_dists_from_wrp[idx] for idx in [0,1,2,3,4,5,7]]
+# opt.prop_dists_from_wrp = [-0.0044, 0.0, 0.0037999999999999987]
+virtual_depth_planes = [0, 0.5, 1] # for Washington scene v2
+# opt.virtual_depth_planes = [1, 3.5, 5.5] # for NYU depth labeled
+wavelength = 5.177e-07
+feature_size = (6.4e-06, 6.4e-06)
+F_aperture = 0.5
+
+device = torch.device('cuda:1')
 
 
 img_dir = '/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01'
@@ -43,18 +62,26 @@ train_dataloader = DataLoader(train_data, batch_size=1)
 test_dataloader = DataLoader(test_data, batch_size=1)
 
 reverse_prop = Reverse3dProp()
-reverse_prop = reverse_prop.cuda()
+reverse_prop = reverse_prop.to(device)
+
+asm_dpac = DPAC(prop_dist, wavelength, feature_size, prop_model='ASM', propagator=propagation_ASM, device=device)
+
 # for param in reverse_prop.CNNpropCNN.parameters():
 #     param.requires_grad = False
-forward_prop = CNNpropCNN_default()
-forward_prop = forward_prop.cuda()
-for param in forward_prop.parameters():
-    param.requires_grad = False
-loss_fn = nn.MSELoss().cuda()
+forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
+                                     'ASM', F_aperture, prop_dists_from_wrp,
+                                     dim=1)
+forward_prop = forward_prop.to(device)
+# for param in forward_prop.parameters():
+#     param.requires_grad = False
+asm_dpac = asm_dpac.to(device)
+# for param in asm_dpac.parameters():
+#     param.requires_grad = False
+loss_fn = nn.MSELoss().to(device)
 
 
 
-learning_rate = 1e-2
+learning_rate = 1e-3
 optimizer = torch.optim.SGD(reverse_prop.parameters(), lr=learning_rate)
 
 epoch = 100000
@@ -77,13 +104,23 @@ for i in range(epoch):
     reverse_prop.train()
     for imgs_masks_id in train_dataloader:
         imgs, masks, imgs_id = imgs_masks_id
-        imgs = imgs.cuda()
-        masks = masks.cuda()
+        imgs = imgs.to(device)
+        masks = masks.to(device)
         masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
         # outputs_field = reverse_prop(imgs)
         # outputs_amp = outputs_field.abs()
         # final_amp = outputs_amp*masks
-        slm_phase = reverse_prop(imgs)
+        mid_amp_phase = reverse_prop(imgs)
+        
+        mid_amp = mid_amp_phase[:,0:1,:,:]
+        mid_phase = mid_amp_phase[:,1:2,:,:]
+        
+        # mid_amp = (mid_amp-mid_amp.min())/(mid_amp.max()-mid_amp.min())
+        # _, slm_phase = asm_dpac(mid_amp, mid_phase)
+        
+        _, slm_phase = asm_dpac(mid_amp, mid_phase)
+        
+        # slm_phase = mid_amp_phase[:,1:2,:,:]
         outputs_field = forward_prop(slm_phase)
         
         
@@ -116,7 +153,7 @@ for i in range(epoch):
         optimizer.step()
         
         total_train_step = total_train_step + 1
-        if (total_train_step) % 100 == 0:
+        if (total_train_step) % 1 == 0:
             
             print(f"Training Step {total_train_step}, Loss: {loss.item()}")
             
@@ -134,8 +171,8 @@ for i in range(epoch):
     with torch.no_grad():
         for imgs_masks_id in test_dataloader:
             imgs, masks, imgs_id = imgs_masks_id
-            imgs = imgs.cuda()
-            masks = masks.cuda()
+            imgs = imgs.to(device)
+            masks = masks.to(device)
             # outputs_field = reverse_prop(imgs)
             # outputs_amp = outputs_field.abs()
             # final_amp = outputs_amp * masks
