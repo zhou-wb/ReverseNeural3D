@@ -324,7 +324,7 @@ def decompose_depthmap(depthmap_virtual_D, depth_planes_D):
     # sanity check
     assert torch.sum(masks).item() == torch.numel(masks) / num_planes
 
-    return masks
+    return masks.squeeze(0)
 
 
 def prop_dist_to_diopter(prop_dists, focal_distance, prop_dist_inf, from_lens=True):
