@@ -137,7 +137,7 @@ def double_phase_amp_phase(amplitudes, phases, three_pi=True, mean_adjust=True):
         max_phase = 2 * math.pi
 
     if mean_adjust:
-        phases_out -= phases_out.mean()
+        phases_out = phases_out - phases_out.mean()
 
     return (phases_out + max_phase / 2) % max_phase - max_phase / 2
 
