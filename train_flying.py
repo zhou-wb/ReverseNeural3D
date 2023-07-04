@@ -31,10 +31,10 @@ wavelength = 5.177e-07
 feature_size = (6.4e-06, 6.4e-06)
 F_aperture = 0.5
 
-if torch.cuda.is_available():
-    # 如果存在多个CUDA设备，选择cuda:1，否则使用cuda:0
-    device = torch.device('cuda:1' if torch.cuda.device_count() > 1 else 'cuda:0')
-
+# if torch.cuda.is_available():
+#     # 如果存在多个CUDA设备，选择cuda:1，否则使用cuda:0
+#     device = torch.device('cuda:1' if torch.cuda.device_count() > 1 else 'cuda:0')
+device = torch.device('cuda:0')
 
 # img_dir = '/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01'
 
@@ -65,7 +65,7 @@ tf = transforms.Compose([
 #                             return_type='image_mask_id',
 #                             )
 
-img_loader = load_flying3d.FlyingThings3D_loader('RGBD',
+img_loader = load_flying3d.FlyingThings3D_loader('/media/datadrive/flying3D',
                                         channel=1, 
                                         shuffle=False, 
                                         virtual_depth_planes=virtual_depth_planes,

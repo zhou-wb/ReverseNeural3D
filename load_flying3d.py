@@ -129,8 +129,8 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
         
         
         # self.im_names = get_image_filenames(dir = os.path.join(self.data_path, 'scene_cam_00_final_hdf5'), keyword = 'color')
-        self.im_names = get_image_filenames(dir = os.path.join(self.data_path, 'color'), keyword = 'color')
-        self.depth_names = get_image_filenames(dir = os.path.join(self.data_path, 'depth'), keyword = 'depth')
+        self.im_names = get_image_filenames(dir = os.path.join(self.data_path, 'frames_cleanpass'))
+        self.depth_names = get_image_filenames(dir = os.path.join(self.data_path, 'disparity'))
         
         assert(len(self.im_names) == len(self.depth_names))
 
