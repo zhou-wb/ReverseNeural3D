@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from load_image import LSHMV_RGBD_Object_Dataset
 from torch.utils.data import random_split, DataLoader
 from torchvision import transforms
@@ -17,10 +18,11 @@ import load_flying3d
 from propagation_ASM import propagation_ASM
 from algorithm import DPAC
 
+from load_hypersim import hypersim_TargetLoader
 from Uformer_model import Uformer
 
 
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 prop_dist = 0.0044
 prop_dists_from_wrp = [-0.0044, -0.0032000000000000006, -0.0024000000000000002, -0.0010000000000000005, 0.0, 0.0013, 0.0028000000000000004, 0.0037999999999999987]
@@ -32,10 +34,10 @@ wavelength = 5.177e-07
 feature_size = (6.4e-06, 6.4e-06)
 F_aperture = 0.5
 
-if torch.cuda.is_available():
-    # 如果存在多个CUDA设备，选择cuda:1，否则使用cuda:0
-    device = torch.device('cuda:1' if torch.cuda.device_count() > 1 else 'cuda:0')
-
+# if torch.cuda.is_available():
+#     # 如果存在多个CUDA设备，选择cuda:1，否则使用cuda:0
+#     device = torch.device('cuda:1' if torch.cuda.device_count() > 1 else 'cuda:0')
+device = torch.device('cuda:0')
 
 # img_dir = '/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01'
 
@@ -43,6 +45,7 @@ if torch.cuda.is_available():
 image_res = (512, 512)
 # roi_res = (540, 960)
 roi_res = (512, 512)
+
 # image_res = (768, 1024)
 # roi_res = (768, 1024)
 
@@ -68,7 +71,7 @@ tf = transforms.Resize(image_res)
 #                             return_type='image_mask_id',
 #                             )
 
-img_loader = load_flying3d.FlyingThings3D_loader('RGBD',
+img_loader = load_flying3d.FlyingThings3D_loader('./media/datadrive/flying3D',
                                         channel=1, 
                                         shuffle=False, 
                                         virtual_depth_planes=virtual_depth_planes,
@@ -83,7 +86,7 @@ img_loader = load_flying3d.FlyingThings3D_loader('RGBD',
 # print(f"train set length: {train_data_size}")
 # print(f"test  set length: {test_data_size}")
 
-train_dataloader = DataLoader(img_loader, batch_size=1,)
+train_dataloader = DataLoader(img_loader, batch_size=1)
 # train_dataloader = DataLoader(img_loader, batch_size=1)
 # test_dataloader = DataLoader(test_data, batch_size=1)
 
@@ -116,7 +119,7 @@ learning_rate = 1e-2
 optimizer = torch.optim.Adam(reverse_prop.parameters(), lr=learning_rate)
 # optimizer = torch.optim.SGD(reverse_prop.parameters(), lr=learning_rate)
 
-epoch = 10
+epoch = 100000
 
 total_train_step = 0
 best_test_loss = float('inf')
@@ -128,9 +131,11 @@ time_str = str(datetime.now()).replace(' ', '-').replace(':', '-')
 writer = SummaryWriter(f'runs/{time_str}')
 
 writer.add_scalar("learning_rate", learning_rate)
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
+
 for i in range(epoch):
     print(f"----------Training Start (Epoch: {i+1})-------------")
+    total_train_loss, total_train_psnr = 0, 0
     
     # training steps
     reverse_prop.train()
@@ -146,7 +151,7 @@ for i in range(epoch):
         # outputs_field = reverse_prop(imgs)
         # outputs_amp = outputs_field.abs()
         # final_amp = outputs_amp*masks
-        mid_amp_phase = reverse_prop(masked_imgs) # torch.Size([1, 2, 512, 512])
+        mid_amp_phase = reverse_prop(masked_imgs) # torch.Size([1, 2, 540, 960])
         # print('mid_amp_phase.shape:',mid_amp_phase.shape)
         
         mid_amp = mid_amp_phase[:,0:1,:,:] # torch.Size([1, 1, 512, 512])
@@ -157,8 +162,7 @@ for i in range(epoch):
         # mid_amp = (mid_amp-mid_amp.min())/(mid_amp.max()-mid_amp.min())
         # _, slm_phase = asm_dpac(mid_amp, mid_phase)
         
-        _, slm_phase = asm_dpac(mid_amp, mid_phase) # torch.Size([1, 1, 512, 512])
-        # print('slm_phase.shape:',slm_phase.shape)
+        _, slm_phase = asm_dpac(mid_amp, mid_phase)
         
         # slm_phase = mid_amp_phase[:,1:2,:,:]
         outputs_field = forward_prop(slm_phase)
@@ -175,7 +179,7 @@ for i in range(epoch):
         
         with torch.no_grad():
             s = (final_amp * masked_imgs).mean() / \
-                (final_amp ** 2).mean()  # scale minimizing MSE btw recon and
+                (final_amp ** 2).mean()  # scale minimizing MSE btw recon and target
         loss = loss_fn(s * final_amp, masked_imgs)
         
         # loss = loss_fn(final_amp, masked_imgs)
@@ -184,8 +188,11 @@ for i in range(epoch):
         # b = utils.target_planes_to_one_image(imgs, masks)
         
         with torch.no_grad(): 
-            psnr = utils.calculate_psnr(utils.target_planes_to_one_image(final_amp, masks), utils.target_planes_to_one_image(imgs, masks))
+            psnr = utils.calculate_psnr(utils.target_planes_to_one_image(s * final_amp, masks), utils.target_planes_to_one_image(imgs, masks))
         
+        total_train_loss += loss.item()
+        total_train_psnr += psnr
+
         writer.add_scalar("train_loss", loss.item(), total_train_step)
         writer.add_scalar("train_psnr", psnr.item(), total_train_step)
         
@@ -197,17 +204,24 @@ for i in range(epoch):
         optimizer.step()
         
         total_train_step = total_train_step + 1
-        if (total_train_step) % 1 == 0:
+        if (total_train_step) % 100 == 0:
             
             print(f"Training Step {total_train_step}, Loss: {loss.item()}")
             
-            if (total_train_step) % 100 == 0:
+            if (total_train_step) % 1000 == 0:
+                mapped_slm_phase = ((slm_phase + np.pi) % (2 * np.pi)) / (2 * np.pi)
                 writer.add_text('image id', imgs_id[0], total_train_step)
+                writer.add_image(f'phase', mapped_slm_phase.squeeze(), total_train_step, dataformats='HW')
                 for i in range(len(plane_idx)):
                     writer.add_image(f'input_images_plane{i}', masked_imgs.squeeze()[i,:,:], total_train_step, dataformats='HW')
                     writer.add_images(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='HW')
                     # writer.add_image(f'input_images_plane{i}', masked_imgs.squeeze()[i,:,:], total_train_step, dataformats='CHW')
                     # writer.add_image(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='CHW')
+                    writer.flush()
+    
+    average_train_loss, average_train_psnr = (total_train_loss, total_train_psnr)/train_dataloader.len()
+    writer.add_scalar("average_train_loss", average_train_loss, total_train_step)
+    writer.add_scalar("average_train_psnr", average_train_psnr, total_train_step)
         
     # test the model after every epoch
     # reverse_prop.eval()
@@ -259,8 +273,3 @@ for i in range(epoch):
 #         (final_amp ** 2).mean()  # scale minimizing MSE btw recon and
 
 # loss_val = loss_fn(s * final_amp, target_amp)
-
-
-
-
-
