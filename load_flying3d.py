@@ -129,8 +129,8 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
         
         
         # self.im_names = get_image_filenames(dir = os.path.join(self.data_path, 'scene_cam_00_final_hdf5'), keyword = 'color')
-        self.im_names = get_image_filenames(dir = os.path.join(self.data_path, 'color'), keyword = 'color')
-        self.depth_names = get_image_filenames(dir = os.path.join(self.data_path, 'depth'), keyword = 'depth')
+        self.im_names = get_image_filenames(dir = os.path.join(self.data_path, 'frames_cleanpass'))
+        self.depth_names = get_image_filenames(dir = os.path.join(self.data_path, 'disparity'))
         
         assert(len(self.im_names) == len(self.depth_names))
 
@@ -202,7 +202,7 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
         distance = distance.astype(np.float64)  # convert to double, max 1
 
         # distance = self.depth_convert(distance)
-        distance = 1 / (distance + 1e-20)  # meter to diopter conversion
+        # distance = 1 / (distance + 1e-20)  # meter to diopter conversion
 
         # convert from numpy array to pytorch tensor, shape = (1, original_h, original_w)
         distance = torch.from_numpy(distance.copy()).float().unsqueeze(0)

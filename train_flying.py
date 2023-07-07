@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from load_image import LSHMV_RGBD_Object_Dataset
 from torch.utils.data import random_split, DataLoader
 from torchvision import transforms
@@ -31,10 +32,10 @@ wavelength = 5.177e-07
 feature_size = (6.4e-06, 6.4e-06)
 F_aperture = 0.5
 
-if torch.cuda.is_available():
-    # 如果存在多个CUDA设备，选择cuda:1，否则使用cuda:0
-    device = torch.device('cuda:1' if torch.cuda.device_count() > 1 else 'cuda:0')
-
+# if torch.cuda.is_available():
+#     # 如果存在多个CUDA设备，选择cuda:1，否则使用cuda:0
+#     device = torch.device('cuda:1' if torch.cuda.device_count() > 1 else 'cuda:0')
+device = torch.device('cuda:1')
 
 # img_dir = '/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01'
 
@@ -65,7 +66,7 @@ tf = transforms.Compose([
 #                             return_type='image_mask_id',
 #                             )
 
-img_loader = load_flying3d.FlyingThings3D_loader('RGBD',
+img_loader = load_flying3d.FlyingThings3D_loader('/media/datadrive/flying3D',
                                         channel=1, 
                                         shuffle=False, 
                                         virtual_depth_planes=virtual_depth_planes,
@@ -122,9 +123,11 @@ time_str = str(datetime.now()).replace(' ', '-').replace(':', '-')
 writer = SummaryWriter(f'runs/{time_str}')
 
 writer.add_scalar("learning_rate", learning_rate)
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
+
 for i in range(epoch):
     print(f"----------Training Start (Epoch: {i+1})-------------")
+    total_train_loss, total_train_psnr = 0, 0
     
     # training steps
     reverse_prop.train()
@@ -164,7 +167,7 @@ for i in range(epoch):
         
         with torch.no_grad():
             s = (final_amp * masked_imgs).mean() / \
-                (final_amp ** 2).mean()  # scale minimizing MSE btw recon and
+                (final_amp ** 2).mean()  # scale minimizing MSE btw recon and target
         loss = loss_fn(s * final_amp, masked_imgs)
         
         # loss = loss_fn(final_amp, masked_imgs)
@@ -173,8 +176,9 @@ for i in range(epoch):
         # b = utils.target_planes_to_one_image(imgs, masks)
         
         with torch.no_grad(): 
-            psnr = utils.calculate_psnr(utils.target_planes_to_one_image(final_amp, masks), utils.target_planes_to_one_image(imgs, masks))
+            psnr = utils.calculate_psnr(utils.target_planes_to_one_image(s * final_amp, masks), utils.target_planes_to_one_image(imgs, masks))
         
+        total_train_loss, total_train_psnr += loss.item(), psnr
         writer.add_scalar("train_loss", loss.item(), total_train_step)
         writer.add_scalar("train_psnr", psnr.item(), total_train_step)
         
@@ -186,17 +190,24 @@ for i in range(epoch):
         optimizer.step()
         
         total_train_step = total_train_step + 1
-        if (total_train_step) % 1 == 0:
+        if (total_train_step) % 100 == 0:
             
             print(f"Training Step {total_train_step}, Loss: {loss.item()}")
             
-            if (total_train_step) % 100 == 0:
+            if (total_train_step) % 1000 == 0:
+                mapped_slm_phase = ((slm_phase + np.pi) % (2 * np.pi)) / (2 * np.pi)
                 writer.add_text('image id', imgs_id[0], total_train_step)
+                writer.add_image(f'phase', mapped_slm_phase.squeeze(), total_train_step, dataformats='HW')
                 for i in range(len(plane_idx)):
                     writer.add_image(f'input_images_plane{i}', masked_imgs.squeeze()[i,:,:], total_train_step, dataformats='HW')
                     writer.add_images(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='HW')
                     # writer.add_image(f'input_images_plane{i}', masked_imgs.squeeze()[i,:,:], total_train_step, dataformats='CHW')
                     # writer.add_image(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='CHW')
+                    writer.flush()
+    
+    average_train_loss, average_train_psnr = (total_train_loss, total_train_psnr)/train_dataloader.len()
+    writer.add_scalar("average_train_loss", average_train_loss, total_train_step)
+    writer.add_scalar("average_train_psnr", average_train_psnr, total_train_step)
         
     # test the model after every epoch
     # reverse_prop.eval()
