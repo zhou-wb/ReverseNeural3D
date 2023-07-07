@@ -17,7 +17,8 @@ import load_flying3d
 from propagation_ASM import propagation_ASM
 from algorithm import DPAC
 
-from load_hypersim import hypersim_TargetLoader
+from Uformer_model import Uformer
+
 
 # torch.autograd.set_detect_anomaly(True)
 
@@ -38,16 +39,18 @@ if torch.cuda.is_available():
 
 # img_dir = '/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01'
 
-image_res = (540, 960)
-roi_res = (540, 960)
-
+# image_res = (540, 960)
+image_res = (512, 512)
+# roi_res = (540, 960)
+roi_res = (512, 512)
 # image_res = (768, 1024)
 # roi_res = (768, 1024)
 
-tf = transforms.Compose([
-    Resize(image_res),
-    ToTensor()
-])
+# tf = transforms.Compose([
+#     Resize(image_res),
+#     ToTensor()
+# ])
+tf = transforms.Resize(image_res)
 # nyu_dataset = LSHMV_RGBD_Object_Dataset(img_dir,
 #                                         color_transform=tf, depth_transform=tf,
 #                                         channel=1, output_type='mask')
@@ -80,12 +83,15 @@ img_loader = load_flying3d.FlyingThings3D_loader('RGBD',
 # print(f"train set length: {train_data_size}")
 # print(f"test  set length: {test_data_size}")
 
-train_dataloader = DataLoader(img_loader, batch_size=1)
+train_dataloader = DataLoader(img_loader, batch_size=1,)
 # train_dataloader = DataLoader(img_loader, batch_size=1)
 # test_dataloader = DataLoader(test_data, batch_size=1)
 
 # reverse_prop = Reverse3dProp()
-reverse_prop = ResNet_Prop(input_channel=len(prop_dists_from_wrp))
+# reverse_prop = ResNet_Prop(input_channel=len(prop_dists_from_wrp))
+depths=[2, 2, 2, 2, 2, 2, 2, 2, 2]
+reverse_prop = Uformer(img_size=image_res, embed_dim=16,depths=depths, dd_in=len(prop_dists_from_wrp), in_chans=2,  # out_channel=in_chans
+                 win_size=8, mlp_ratio=4., token_projection='linear', token_mlp='leff', modulator=True, shift_flag=False)
 reverse_prop = reverse_prop.to(device)
 
 
@@ -110,7 +116,7 @@ learning_rate = 1e-2
 optimizer = torch.optim.Adam(reverse_prop.parameters(), lr=learning_rate)
 # optimizer = torch.optim.SGD(reverse_prop.parameters(), lr=learning_rate)
 
-epoch = 100000
+epoch = 10
 
 total_train_step = 0
 best_test_loss = float('inf')
@@ -130,24 +136,29 @@ for i in range(epoch):
     reverse_prop.train()
     for imgs_masks_id in train_dataloader:
         imgs, masks, imgs_id = imgs_masks_id
-        imgs = imgs.to(device)
-        masks = masks.to(device)
+        # imgs = imgs.to(device)
+        imgs = tf(imgs).to(device)
+        # masks = masks.to(device)
+        masks = tf(masks).to(device)
         masked_imgs = imgs * masks
         nonzeros = masks > 0
         masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
         # outputs_field = reverse_prop(imgs)
         # outputs_amp = outputs_field.abs()
         # final_amp = outputs_amp*masks
-        mid_amp_phase = reverse_prop(masked_imgs) # torch.Size([1, 2, 540, 960])
+        mid_amp_phase = reverse_prop(masked_imgs) # torch.Size([1, 2, 512, 512])
         # print('mid_amp_phase.shape:',mid_amp_phase.shape)
         
-        mid_amp = mid_amp_phase[:,0:1,:,:]
-        mid_phase = mid_amp_phase[:,1:2,:,:]
+        mid_amp = mid_amp_phase[:,0:1,:,:] # torch.Size([1, 1, 512, 512])
+        mid_phase = mid_amp_phase[:,1:2,:,:] # torch.Size([1, 1, 512, 512])
+        # print('mid_amp.shape:',mid_amp.shape)
+        # print('mid_phase.shape:',mid_phase.shape)
         
         # mid_amp = (mid_amp-mid_amp.min())/(mid_amp.max()-mid_amp.min())
         # _, slm_phase = asm_dpac(mid_amp, mid_phase)
         
-        _, slm_phase = asm_dpac(mid_amp, mid_phase)
+        _, slm_phase = asm_dpac(mid_amp, mid_phase) # torch.Size([1, 1, 512, 512])
+        # print('slm_phase.shape:',slm_phase.shape)
         
         # slm_phase = mid_amp_phase[:,1:2,:,:]
         outputs_field = forward_prop(slm_phase)
@@ -248,3 +259,8 @@ for i in range(epoch):
 #         (final_amp ** 2).mean()  # scale minimizing MSE btw recon and
 
 # loss_val = loss_fn(s * final_amp, target_amp)
+
+
+
+
+
