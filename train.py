@@ -163,7 +163,7 @@ for i in range(epoch):
         # b = utils.target_planes_to_one_image(imgs, masks)
         
         with torch.no_grad(): 
-            psnr = utils.calculate_psnr(utils.target_planes_to_one_image(final_amp, masks), utils.target_planes_to_one_image(imgs, masks))
+            psnr = utils.calculate_psnr(utils.target_planes_to_one_image(s * final_amp, masks), utils.target_planes_to_one_image(imgs, masks))
         
         writer.add_scalar("train_loss", loss.item(), total_train_step)
         writer.add_scalar("train_psnr", psnr.item(), total_train_step)
@@ -171,20 +171,20 @@ for i in range(epoch):
         # optimization
         optimizer.zero_grad()
         loss.backward()
-        print(masked_imgs.grad)
-        print(mid_amp_phase.grad)
+        # print(masked_imgs.grad)
+        # print(mid_amp_phase.grad)
         optimizer.step()
         
         total_train_step = total_train_step + 1
-        if (total_train_step) % 1 == 0:
+        if (total_train_step) % 100 == 0:
             
             print(f"Training Step {total_train_step}, Loss: {loss.item()}")
             
-            if (total_train_step) % 100 == 0:
+            if (total_train_step) % 300 == 0:
                 writer.add_text('image id', imgs_id[0], total_train_step)
                 for i in range(len(plane_idx)):
                     writer.add_image(f'input_images_plane{i}', masked_imgs.squeeze()[i,:,:], total_train_step, dataformats='HW')
-                    writer.add_images(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='HW')
+                    writer.add_images(f'output_image_plane{i}', s * outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='HW')
         
     # test the model after every epoch
     # reverse_prop.eval()

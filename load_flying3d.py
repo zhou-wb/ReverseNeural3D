@@ -202,7 +202,7 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
         distance = distance.astype(np.float64)  # convert to double, max 1
 
         # distance = self.depth_convert(distance)
-        distance = 1 / (distance + 1e-20)  # meter to diopter conversion
+        # distance = 1 / (distance + 1e-20)  # meter to diopter conversion
 
         # convert from numpy array to pytorch tensor, shape = (1, original_h, original_w)
         distance = torch.from_numpy(distance.copy()).float().unsqueeze(0)
