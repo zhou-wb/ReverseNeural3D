@@ -44,7 +44,7 @@ F_aperture = 0.5
 
 device = torch.device('cuda:0')
 loss_fn = nn.MSELoss().to(device)
-learning_rate = 1e-2
+learning_rate = 1e-5
 max_epoch = 100000
 # If there are nan in output, consider enable this to debug
 # torch.autograd.set_detect_anomaly(True)
@@ -56,12 +56,12 @@ max_epoch = 100000
 # Dataset Parameters #
 ######################
 
-batch_size = 2
+batch_size = 1
 dataset_list = ['Hypersim', 'FlyingThings3D', 'MitCGH']
-dataset_id = 0
+dataset_id = 1
 dataset_name = dataset_list[dataset_id]
-loss_on_roi = False
-resize_to_1080p = False
+loss_on_roi = True
+resize_to_1080p = True
 random_seed = 10 #random_seed = None for not shuffle
 
 if dataset_name == 'Hypersim':
@@ -159,7 +159,7 @@ val_dataloader = DataLoader(val_loader, batch_size=batch_size)
 
 # choose the network structure by set the config_id to 0,1,2
 inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only']
-network_id = 1
+network_id = 2
 inverse_network_config = inverse_network_list[network_id]
 
 
@@ -196,7 +196,7 @@ elif inverse_network_config == 'cnn_asm_cnn':
                                         dim=1)
     inverse_asm = inverse_asm.to(device)
 
-    slm_cnn = UNetProp()
+    slm_cnn = UNetProp(img_size=image_res, input_nc=2, output_nc=1)
     slm_cnn = slm_cnn.to(device)
     
     props = {'target_cnn': target_cnn, 'inverse_asm':inverse_asm, 'slm_cnn':slm_cnn}
@@ -214,21 +214,21 @@ inverse_prop = InversePropagation(inverse_network_config, **props)
 ####################################
 
 #################### use CNNpropCNN as Forward Network ############################
-# forward_network_config = 'CNNpropCNN'
-# if resize_to_1080p == False:
-#     raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model')
-# forward_prop = CNNpropCNN_default()
-# forward_prop = forward_prop.to(device)
-# for param in forward_prop.parameters():
-#     param.requires_grad = False
+forward_network_config = 'CNNpropCNN'
+if resize_to_1080p == False:
+    raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model')
+forward_prop = CNNpropCNN_default()
+forward_prop = forward_prop.to(device)
+for param in forward_prop.parameters():
+    param.requires_grad = False
 ###################################################################################
 
 ######################## use ASM as Forward Network ###############################
-forward_network_config = 'ASM'
-forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
-                                     'ASM', F_aperture, prop_dists_from_wrp,
-                                     dim=1)
-forward_prop = forward_prop.to(device)
+# forward_network_config = 'ASM'
+# forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
+#                                      'ASM', F_aperture, prop_dists_from_wrp,
+#                                      dim=1)
+# forward_prop = forward_prop.to(device)
 ###################################################################################
 
 
