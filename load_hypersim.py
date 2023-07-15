@@ -118,41 +118,46 @@ class hypersim_TargetLoader(torch.utils.data.IterableDataset):
     def __init__(self, data_path, channel=None,
                  image_res=(800, 1280), roi_res=(700, 1190),
                  crop_to_roi=False, shuffle=False, scale_vd_range=True,
-                 virtual_depth_planes=None, return_type='image_mask_id'):
+                 virtual_depth_planes=None, return_type='image_mask_id',
+                 random_seed=None, slice=(0, 1)):
         """ initialization """
         if isinstance(data_path, str) and not os.path.isdir(data_path):
             raise NotADirectoryError(f'Data folder: {data_path}')
 
         self.data_path = data_path
-        # self.target_type = target_type.lower()
         self.channel = channel
-        # self.roi_res = roi_res
-        # self.crop_to_roi = crop_to_roi
-        # self.image_res = image_res
+        self.roi_res = roi_res
+        self.image_res = image_res
         self.shuffle = shuffle
-        # self.physical_depth_planes = physical_depth_planes
         self.virtual_depth_planes = virtual_depth_planes
         self.scale_vd_range = scale_vd_range
         self.vd_min = 0.01
         self.vd_max = max(self.virtual_depth_planes)
         self.return_type = return_type
-        
+        self.slice = slice
+        self.random_seed = random_seed
         
         # self.im_names = get_image_filenames(dir = os.path.join(self.data_path, 'scene_cam_00_final_hdf5'), keyword = 'color')
-        self.im_names = get_image_filenames(dir = os.path.join(self.data_path, 'scene_cam_00_final_preview'), keyword = 'color')
-        self.depth_names = get_image_filenames(dir = os.path.join(self.data_path, 'scene_cam_00_geometry_hdf5'), keyword = 'depth_meters')
+        if isinstance(self.data_path, str):
+            self.im_names = get_image_filenames(dir = os.path.join(self.data_path, 'scene_cam_00_final_preview'), keyword = 'color')
+            self.depth_names = get_image_filenames(dir = os.path.join(self.data_path, 'scene_cam_00_geometry_hdf5'), keyword = 'depth_meters')
+        elif isinstance(self.data_path, list):
+            self.im_names = get_image_filenames(dir = [os.path.join(path, 'scene_cam_00_final_preview') for path in self.data_path], keyword = 'color')
+            self.depth_names = get_image_filenames(dir = [os.path.join(path, 'scene_cam_00_geometry_hdf5') for path in self.data_path], keyword = 'depth_meters')
         
+        length = len(self.im_names)
         assert(len(self.im_names) == len(self.depth_names))
 
         self.im_names.sort()
         self.depth_names.sort()
 
-        self.order = list((i) for i in range(len(self.im_names)))
+        self.order = list((i) for i in range(length))
+        if self.random_seed != None:
+            random.Random(self.random_seed).shuffle(self.order)
+        self.order = self.order[round(self.slice[0]*length):round(self.slice[1]*length)]
 
     def __iter__(self):
         self.ind = 0
-        if self.shuffle:
-            random.shuffle(self.order)
         return self
 
     def __len__(self):
@@ -188,6 +193,9 @@ class hypersim_TargetLoader(torch.utils.data.IterableDataset):
         # move channel dim to torch convention
         im = np.transpose(im, axes=(2, 0, 1))
         
+        im = resize_keep_aspect(im, self.roi_res)
+        im = pad_crop_to_res(im, self.image_res)
+        
         path = os.path.splitext(self.im_names[filenum])[0]
 
         return (torch.from_numpy(im).float(),
@@ -211,12 +219,20 @@ class hypersim_TargetLoader(torch.utils.data.IterableDataset):
             distance = dist_file['dataset'][:]
 
         distance = distance.astype(np.float64)  # convert to double, max 1
+        
+        # NaN to inf
+        distance[np.isnan(distance)] = 100
 
         # distance = self.depth_convert(distance)
         distance = 1 / (distance + 1e-20)  # meter to diopter conversion
+        
+        
 
         # convert from numpy array to pytorch tensor, shape = (1, original_h, original_w)
         distance = torch.from_numpy(distance.copy()).float().unsqueeze(0)
+        
+        distance = resize_keep_aspect(distance, self.roi_res, pytorch=True)
+        distance = pad_crop_to_res(distance, self.image_res, pytorch=True)
         
         # perform scaling in meters
         if self.scale_vd_range:

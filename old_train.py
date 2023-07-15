@@ -3,7 +3,7 @@ from load_image import LSHMV_RGBD_Object_Dataset
 from torch.utils.data import random_split, DataLoader
 from torchvision import transforms
 from torchvision.transforms import ToTensor, Resize
-from reverse3d_prop import Reverse3dProp
+from inverse3d_prop import UNetProp
 from resnet_prop import ResNet_Prop
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
