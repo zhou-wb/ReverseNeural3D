@@ -4,7 +4,7 @@ from torch.utils.data import random_split, DataLoader
 from torchvision import transforms
 from torchvision.transforms import ToTensor, Resize
 from inverse3d_prop import UNetProp
-from resnet_prop import ResNet_Prop
+from old_resnet_prop import ResNet_Prop
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
