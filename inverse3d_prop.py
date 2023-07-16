@@ -4,6 +4,9 @@ from torch.nn import functional as F
 from unet import UnetGenerator, init_weights
 import utils
 from torchsummary import summary
+import prop_ideal
+from algorithm import DPAC
+from propagation_ASM import propagation_ASM
 
 
 #####################
@@ -109,21 +112,26 @@ class ResNet_Prop(nn.Module):
 # Different Implementations of Inverse Propagation #
 ####################################################
 
-class InversePropagation():
-    def __init__(self, inverse_network_config, **props):
+class InversePropagation(nn.Module):
+    def __init__(self, inverse_network_config, **kwargs):
+        super().__init__()
         self.config = inverse_network_config
         if self.config == 'cnn_only':
-            self.inverse_cnn = props['inverse_cnn']
-            self.prop = self.inverse_CNN_only
+            self.inverse_cnn = ResNet_Prop(input_channel=len(kwargs['prop_dists_from_wrp']), output_channel=1)
+            # self.inverse_cnn = UNetProp(img_size=kwargs['image_res'], input_nc=len(kwargs['prop_dists_from_wrp']), output_nc=1)
+            self.forward = self.inverse_CNN_only
         elif self.config == 'cnn_asm_dpac':
-            self.target_cnn = props['target_cnn']
-            self.asm_dpac = props['asm_dpac']
-            self.prop = self.inverse_CNN_ASM_DPAC
+            self.target_cnn = ResNet_Prop(input_channel=len(kwargs['prop_dists_from_wrp']), output_channel=2)
+            self.asm_dpac = DPAC(kwargs['prop_dist'], kwargs['wavelength'], kwargs['feature_size'], prop_model='ASM', 
+                                 propagator=propagation_ASM, device=kwargs['device'])
+            self.forward = self.inverse_CNN_ASM_DPAC
         elif self.config == 'cnn_asm_cnn':
-            self.target_cnn = props['target_cnn']
-            self.inverse_asm = props['inverse_asm']
-            self.slm_cnn = props['slm_cnn']
-            self.prop = self.inverse_CNN_ASM_CNN
+            self.target_cnn = ResNet_Prop(input_channel=len(kwargs['prop_dists_from_wrp']), output_channel=2)
+            self.inverse_asm = prop_ideal.SerialProp(-kwargs['prop_dist'], kwargs['wavelength'], kwargs['feature_size'],
+                                        'ASM', kwargs['F_aperture'], None,
+                                        dim=1)
+            self.slm_cnn = UNetProp(img_size=kwargs['image_res'], input_nc=2, output_nc=1)
+            self.forward = self.inverse_CNN_ASM_CNN
         else:
             raise ValueError(f'{inverse_network_config} not implemented!')
         
@@ -152,33 +160,7 @@ class InversePropagation():
         slm_phase = self.slm_cnn(torch.cat([slm_field.abs(), slm_field.angle()], dim=1))
         ##########################################################
         return slm_phase
-    
-    def train(self):
-        if self.config == 'cnn_only':
-            self.inverse_cnn.train()
-        elif self.config == 'cnn_asm_dpac':
-            self.target_cnn.train()
-        elif self.config == 'cnn_asm_cnn':
-            self.target_cnn.train()
-            self.slm_cnn.train()
-    
-    def eval(self):
-        if self.config == 'cnn_only':
-            self.inverse_cnn.eval()
-        elif self.config == 'cnn_asm_dpac':
-            self.target_cnn.eval()
-        elif self.config == 'cnn_asm_cnn':
-            self.target_cnn.eval()
-            self.slm_cnn.eval()
-    
-    def save(self, path):
-        if self.config == 'cnn_only':
-            torch.save(self.inverse_cnn, path)
-        elif self.config == 'cnn_asm_dpac':
-            torch.save(self.target_cnn, path)
-        elif self.config == 'cnn_asm_cnn':
-            torch.save(self.target_cnn, path+'target')
-            torch.save(self.slm_cnn, path+'slm')
+
 
 
 if __name__ == '__main__':
