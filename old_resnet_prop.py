@@ -33,9 +33,10 @@ class residual_block(nn.Module):
 
 
 class ResNet_Prop(nn.Module):
-    def __init__(self,input_channel=3,block_num=30) -> None:
+    def __init__(self,input_channel=3,output_channel=2,block_num=30) -> None:
         super().__init__()
         self.input_channel=input_channel
+        self.output_channel=output_channel
         self.first_layer=nn.Sequential(
             nn.Conv2d(self.input_channel,24,kernel_size=3,padding=1,bias=False),
             nn.BatchNorm2d(24),
@@ -44,8 +45,8 @@ class ResNet_Prop(nn.Module):
         self.layer1=self.make_layer(3, 24,block_num=1)
         self.layer2=self.make_layer(24,24,block_num=15)
         self.last_layer=nn.Sequential(
-            nn.Conv2d(self.input_channel+24,2,kernel_size=3,padding=1,bias=False),
-            nn.BatchNorm2d(2),
+            nn.Conv2d(self.input_channel+24,self.output_channel,kernel_size=3,padding=1,bias=False),
+            nn.BatchNorm2d(self.output_channel),
             nn.ReLU()
         )
     

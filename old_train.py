@@ -1,11 +1,10 @@
 import torch
-import numpy as np
 from load_image import LSHMV_RGBD_Object_Dataset
 from torch.utils.data import random_split, DataLoader
 from torchvision import transforms
 from torchvision.transforms import ToTensor, Resize
-from reverse3d_prop import Reverse3dProp
-from resnet_prop import ResNet_Prop
+from inverse3d_prop import UNetProp
+from old_resnet_prop import ResNet_Prop
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
@@ -13,7 +12,6 @@ import os
 import utils
 from prop_model import CNNpropCNN_default
 import prop_ideal
-import load_flying3d
 
 from propagation_ASM import propagation_ASM
 from algorithm import DPAC
@@ -25,53 +23,45 @@ from load_hypersim import hypersim_TargetLoader
 prop_dist = 0.0044
 prop_dists_from_wrp = [-0.0044, -0.0032000000000000006, -0.0024000000000000002, -0.0010000000000000005, 0.0, 0.0013, 0.0028000000000000004, 0.0037999999999999987]
 virtual_depth_planes = [0.0, 0.08417508417508479, 0.14124293785310726, 0.24299599771297942, 0.3171856978085348, 0.4155730533683304, 0.5319148936170226, 0.6112104949314254]
-plane_idx = [0, 1, 2, 3, 4, 5, 6, 7]
+plane_idx = [0,1,2]
 prop_dists_from_wrp = [prop_dists_from_wrp[idx] for idx in plane_idx]
 virtual_depth_planes = [virtual_depth_planes[idx] for idx in plane_idx]
 wavelength = 5.177e-07
 feature_size = (6.4e-06, 6.4e-06)
 F_aperture = 0.5
 
-# if torch.cuda.is_available():
-#     # 如果存在多个CUDA设备，选择cuda:1，否则使用cuda:0
-#     device = torch.device('cuda:1' if torch.cuda.device_count() > 1 else 'cuda:0')
 device = torch.device('cuda:1')
 
-# img_dir = '/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01'
 
-image_res = (540, 960)
-roi_res = (540, 960)
+img_dir = '/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01'
 
-# image_res = (768, 1024)
-# roi_res = (768, 1024)
+# image_res = (1080, 1920)
+# roi_res = (960, 1680)
+
+image_res = (768, 1024)
+roi_res = (768, 1024)
 
 tf = transforms.Compose([
     Resize(image_res),
     ToTensor()
 ])
-# nyu_dataset = LSHMV_RGBD_Object_Dataset(img_dir,
-#                                         color_transform=tf, depth_transform=tf,
-#                                         channel=1, output_type='mask')
+nyu_dataset = LSHMV_RGBD_Object_Dataset('/home/wenbin/Downloads/rgbd-scenes-v2/imgs/scene_01',
+                                        color_transform=tf, depth_transform=tf,
+                                        channel=1, output_type='mask')
 
-# for i in range(2, 15):
-#     scene_name = 'scene_' + str(i).zfill(2)
-#     nyu_dataset += LSHMV_RGBD_Object_Dataset('/home/wenbin/Downloads/rgbd-scenes-v2/imgs/'+scene_name,
-#                                              color_transform=tf, depth_transform=tf,
-#                                              channel=1, output_type='mask')
+for i in range(2, 15):
+    scene_name = 'scene_' + str(i).zfill(2)
+    nyu_dataset += LSHMV_RGBD_Object_Dataset('/home/wenbin/Downloads/rgbd-scenes-v2/imgs/'+scene_name,
+                                             color_transform=tf, depth_transform=tf,
+                                             channel=1, output_type='mask')
 
-# img_loader = hypersim_TargetLoader(data_path='/media/datadrive/hypersim/ai_001_001/images', 
-#                             channel=1, 
-#                             shuffle=False, 
-#                             virtual_depth_planes=virtual_depth_planes,
-#                             return_type='image_mask_id',
-#                             )
+img_loader = hypersim_TargetLoader(data_path='/media/datadrive/hypersim/ai_001_001/images', 
+                            channel=1, 
+                            shuffle=False, 
+                            virtual_depth_planes=virtual_depth_planes,
+                            return_type='image_mask_id',
+                            )
 
-img_loader = load_flying3d.FlyingThings3D_loader('/media/datadrive/flying3D',
-                                        channel=1, 
-                                        shuffle=False, 
-                                        virtual_depth_planes=virtual_depth_planes,
-                                        return_type='image_mask_id',
-                                        )
     
 
 # train_data_size = int(0.8*len(nyu_dataset))
@@ -123,11 +113,9 @@ time_str = str(datetime.now()).replace(' ', '-').replace(':', '-')
 writer = SummaryWriter(f'runs/{time_str}')
 
 writer.add_scalar("learning_rate", learning_rate)
-# torch.autograd.set_detect_anomaly(True)
 
 for i in range(epoch):
     print(f"----------Training Start (Epoch: {i+1})-------------")
-    total_train_loss, total_train_psnr = 0, 0
     
     # training steps
     reverse_prop.train()
@@ -167,7 +155,7 @@ for i in range(epoch):
         
         with torch.no_grad():
             s = (final_amp * masked_imgs).mean() / \
-                (final_amp ** 2).mean()  # scale minimizing MSE btw recon and target
+                (final_amp ** 2).mean()  # scale minimizing MSE btw recon and
         loss = loss_fn(s * final_amp, masked_imgs)
         
         # loss = loss_fn(final_amp, masked_imgs)
@@ -178,7 +166,6 @@ for i in range(epoch):
         with torch.no_grad(): 
             psnr = utils.calculate_psnr(utils.target_planes_to_one_image(s * final_amp, masks), utils.target_planes_to_one_image(imgs, masks))
         
-        total_train_loss, total_train_psnr += loss.item(), psnr
         writer.add_scalar("train_loss", loss.item(), total_train_step)
         writer.add_scalar("train_psnr", psnr.item(), total_train_step)
         
@@ -194,20 +181,11 @@ for i in range(epoch):
             
             print(f"Training Step {total_train_step}, Loss: {loss.item()}")
             
-            if (total_train_step) % 1000 == 0:
-                mapped_slm_phase = ((slm_phase + np.pi) % (2 * np.pi)) / (2 * np.pi)
+            if (total_train_step) % 300 == 0:
                 writer.add_text('image id', imgs_id[0], total_train_step)
-                writer.add_image(f'phase', mapped_slm_phase.squeeze(), total_train_step, dataformats='HW')
                 for i in range(len(plane_idx)):
                     writer.add_image(f'input_images_plane{i}', masked_imgs.squeeze()[i,:,:], total_train_step, dataformats='HW')
-                    writer.add_images(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='HW')
-                    # writer.add_image(f'input_images_plane{i}', masked_imgs.squeeze()[i,:,:], total_train_step, dataformats='CHW')
-                    # writer.add_image(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='CHW')
-                    writer.flush()
-    
-    average_train_loss, average_train_psnr = (total_train_loss, total_train_psnr)/train_dataloader.len()
-    writer.add_scalar("average_train_loss", average_train_loss, total_train_step)
-    writer.add_scalar("average_train_psnr", average_train_psnr, total_train_step)
+                    writer.add_images(f'output_image_plane{i}', s * outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='HW')
         
     # test the model after every epoch
     # reverse_prop.eval()

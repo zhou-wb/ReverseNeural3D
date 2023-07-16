@@ -1,4 +1,4 @@
-import os
+import os, copy
 from imageio import imread
 from skimage.transform import resize
 from torchvision.transforms.functional import resize as resize_tensor
@@ -106,43 +106,49 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
     """
 
     def __init__(self, data_path, channel=None,
-                 image_res=(800, 1280), roi_res=(700, 1190),
-                 crop_to_roi=False, shuffle=False, scale_vd_range=True,
-                 virtual_depth_planes=None, return_type='image_mask_id'):
+                 image_res=(1080, 1920), roi_res=(960, 1680),
+                 crop_to_roi=False, scale_vd_range=True,
+                 virtual_depth_planes=None, return_type='image_mask_id',
+                 random_seed=None, slice=(0, 1)):
         """ initialization """
         if isinstance(data_path, str) and not os.path.isdir(data_path):
             raise NotADirectoryError(f'Data folder: {data_path}')
 
+        assert(slice[0] >=0 and slice[0]<=1 and slice[1] >=0 and slice[1]<=1 and slice[0] < slice[1]) 
+        
         self.data_path = data_path
         # self.target_type = target_type.lower()
         self.channel = channel
-        # self.roi_res = roi_res
+        self.roi_res = roi_res
         # self.crop_to_roi = crop_to_roi
-        # self.image_res = image_res
-        self.shuffle = shuffle
+        self.image_res = image_res
         # self.physical_depth_planes = physical_depth_planes
         self.virtual_depth_planes = virtual_depth_planes
         self.scale_vd_range = scale_vd_range
         self.vd_min = 0.01
         self.vd_max = max(self.virtual_depth_planes)
         self.return_type = return_type
+        self.slice = slice
+        self.random_seed = random_seed
         
         
         # self.im_names = get_image_filenames(dir = os.path.join(self.data_path, 'scene_cam_00_final_hdf5'), keyword = 'color')
         self.im_names = get_image_filenames(dir = os.path.join(self.data_path, 'frames_cleanpass'))
         self.depth_names = get_image_filenames(dir = os.path.join(self.data_path, 'disparity'))
         
+        length = len(self.im_names)
         assert(len(self.im_names) == len(self.depth_names))
 
         self.im_names.sort()
         self.depth_names.sort()
 
-        self.order = list((i) for i in range(len(self.im_names)))
+        self.order = list((i) for i in range(length))
+        if self.random_seed != None:
+            random.Random(self.random_seed).shuffle(self.order)
+        self.order = self.order[round(self.slice[0]*length):round(self.slice[1]*length)]
 
     def __iter__(self):
-        self.ind = 0
-        if self.shuffle:
-            random.shuffle(self.order)
+        self.ind = 0            
         return self
 
     def __len__(self):
@@ -178,6 +184,9 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
         # move channel dim to torch convention
         im = np.transpose(im, axes=(2, 0, 1))
         
+        im = resize_keep_aspect(im, self.roi_res)
+        im = pad_crop_to_res(im, self.image_res)
+        
         path = os.path.splitext(self.im_names[filenum])[0]
 
         return (torch.from_numpy(im).float(),
@@ -195,33 +204,34 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
         return depth
 
     def load_depth(self, filenum):
-        distance_path = self.depth_names[filenum]
-        distance = utils.read_pfm(distance_path)
-        
-
-        distance = distance.astype(np.float64)  # convert to double, max 1
+        depth_path = self.depth_names[filenum]
+        depth = utils.read_pfm(depth_path)
+    
+        depth = depth.astype(np.float64)  # convert to double, max 1
 
         # distance = self.depth_convert(distance)
-        # distance = 1 / (distance + 1e-20)  # meter to diopter conversion
 
         # convert from numpy array to pytorch tensor, shape = (1, original_h, original_w)
-        distance = torch.from_numpy(distance.copy()).float().unsqueeze(0)
+        depth = torch.from_numpy(depth.copy()).float().unsqueeze(0)
+        
+        depth = resize_keep_aspect(depth, self.roi_res, pytorch=True)
+        depth = pad_crop_to_res(depth, self.image_res, pytorch=True)
         
         # perform scaling in meters
         if self.scale_vd_range:
-            distance = distance - distance.min()
-            distance = (distance / distance.max()) * (self.vd_max - self.vd_min)
-            distance = distance + self.vd_min
+            depth = depth - depth.min()
+            depth = (depth / depth.max()) * (self.vd_max - self.vd_min)
+            depth = depth + self.vd_min
 
         # check nans
-        if (distance.isnan().any()):
+        if (depth.isnan().any()):
             print("Found Nans in target depth!")
-            min_substitute = self.vd_min * torch.ones_like(distance)
-            distance = torch.where(distance.isnan(), min_substitute, distance)
+            min_substitute = self.vd_min * torch.ones_like(depth)
+            depth = torch.where(depth.isnan(), min_substitute, depth)
 
         path = os.path.splitext(self.depth_names[filenum])[0]
 
-        return (distance.float(),
+        return (depth.float(),
                 None,
                 os.path.split(path)[1].split('_')[-1])
 
@@ -238,24 +248,13 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
 
 
 if __name__ == '__main__':
-    img_list = get_image_filenames('/media/datadrive/hypersim/ai_001_001/images/scene_cam_00_final_hdf5', keyword='color')
-    dist_list = get_image_filenames('/media/datadrive/hypersim/ai_001_001/images/scene_cam_00_geometry_hdf5', keyword='depth_meters')
+    virtual_depth_planes = [0.0, 0.08417508417508479, 0.14124293785310726, 0.24299599771297942, 0.3171856978085348, 0.4155730533683304, 0.5319148936170226, 0.6112104949314254]
+    img_loader = FlyingThings3D_loader('/media/datadrive/flying3D',
+                                        channel=1,  
+                                        virtual_depth_planes=virtual_depth_planes,
+                                        return_type='image_mask_id',
+                                        slice=(0,0.8)
+                                        )
     
-    virtual_depth_planes=[0.0, 0.08417508417508479, 0.14124293785310726, 0.24299599771297942, 0.3171856978085348, 0.4155730533683304, 0.5319148936170226, 0.6112104949314254]
-    hypersim = FlyingThings3D_loader(data_path='/media/datadrive/hypersim/ai_001_001/images', 
-                            channel=1, 
-                            shuffle=False, 
-                            virtual_depth_planes=[virtual_depth_planes[idx] for idx in [0,3,5]]
-                            # return_type='image_depth_id',
-                            )
-    
-    for i, target in enumerate(hypersim):
-        
-        target_amp, target_mask, target_idx = target
-        
-        # plt.hist(target_depth.numpy().ravel())
-        # plt.savefig('test.png')
-
-        pass
-    
+    print(len(img_loader))
     pass
