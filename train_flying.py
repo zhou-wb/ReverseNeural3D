@@ -73,7 +73,7 @@ img_loader = load_flying3d.FlyingThings3D_loader('/media/datadrive/flying3D',
                                         return_type='image_mask_id',
                                         )
     
-    
+
 # train_data_size = int(0.8*len(nyu_dataset))
 # test_data_size = len(nyu_dataset)-train_data_size
 # train_data, test_data = random_split(nyu_dataset, [train_data_size,test_data_size], generator=torch.Generator().manual_seed(42))
