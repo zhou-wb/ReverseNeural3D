@@ -3,6 +3,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
+from torchvision import transforms
 
 # propagation network related 
 from inverse3d_prop import UNetProp, ResNet_Prop, InversePropagation
@@ -61,6 +62,7 @@ dataset_id = 1
 dataset_name = dataset_list[dataset_id]
 loss_on_roi = True
 resize_to_1080p = False
+uformer_input_crop = True # if True, crop the input to square shape, must set resize_to_1080p to False
 random_seed = 10 #random_seed = None for not shuffle
 
 if dataset_name == 'Hypersim':
@@ -114,6 +116,12 @@ elif dataset_name == 'FlyingThings3D':
             roi_res = (960, 1680)
         else:
             roi_res = (1080, 1920)
+    elif uformer_input_crop:
+        image_res = (512, 512)
+        if loss_on_roi:
+            roi_res = (480, 480)
+        else:
+            roi_res = (512, 512)
     else:
         image_res = (540, 960)
         if loss_on_roi:
@@ -157,8 +165,8 @@ val_dataloader = DataLoader(val_loader, batch_size=batch_size)
 ####################################
 
 # choose the network structure by set the config_id to 0,1,2
-inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only']
-network_id = 2
+inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'uformer_asm_dpac', 'vit_only']
+network_id = 3
 inverse_network_config = inverse_network_list[network_id]
 
 inverse_prop = InversePropagation(inverse_network_config, prop_dists_from_wrp=prop_dists_from_wrp, prop_dist=prop_dist,
@@ -222,6 +230,7 @@ writer = SummaryWriter(f'runs/{run_folder_name}')
 writer.add_scalar("learning_rate", learning_rate)
 
 
+tf = transforms.CenterCrop(image_res) # crop for Uformer whitch only take square image
 
 
 #################
@@ -237,6 +246,9 @@ for i in range(max_epoch):
     average_scale_factor = 0
     for imgs_masks_id in train_dataloader:
         imgs, masks, imgs_id = imgs_masks_id
+        if inverse_network_config == 'uformer_asm_dpac':
+            imgs = tf(imgs)
+            masks = tf(masks)
         imgs = imgs.to(device)
         masks = masks.to(device)
         masked_imgs = imgs * masks
@@ -316,6 +328,9 @@ for i in range(max_epoch):
     with torch.no_grad():
         for imgs_masks_id in val_dataloader:
             imgs, masks, imgs_id = imgs_masks_id
+            if inverse_network_config == 'uformer_asm_dpac':
+                imgs = tf(imgs)
+                masks = tf(masks)
             imgs = imgs.to(device)
             masks = masks.to(device)
             masked_imgs = imgs * masks
