@@ -108,7 +108,7 @@ elif dataset_name == 'FlyingThings3D':
     # Load training set and validation set seperatly.
     # Set the slice parameter accordingly to get desired size of train/val sets
     # Original Resolution: (540, 960)
-    data_path = '/media/datadrive/flying3D'
+    data_path = './media/datadrive/flying3D'
     if resize_to_1080p:
         image_res = (1080, 1920)
         if loss_on_roi:
@@ -159,7 +159,7 @@ val_dataloader = DataLoader(val_loader, batch_size=batch_size)
 
 # choose the network structure by set the config_id to 0,1,2
 inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only']
-network_id = 1
+network_id = 2
 inverse_network_config = inverse_network_list[network_id]
 
 
@@ -214,21 +214,21 @@ inverse_prop = InversePropagation(inverse_network_config, **props)
 ####################################
 
 #################### use CNNpropCNN as Forward Network ############################
-forward_network_config = 'CNNpropCNN'
-if resize_to_1080p == False:
-    raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model')
-forward_prop = CNNpropCNN_default()
-forward_prop = forward_prop.to(device)
-for param in forward_prop.parameters():
-    param.requires_grad = False
+# forward_network_config = 'CNNpropCNN'
+# if resize_to_1080p == False:
+#     raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model')
+# forward_prop = CNNpropCNN_default()
+# forward_prop = forward_prop.to(device)
+# for param in forward_prop.parameters():
+#     param.requires_grad = False
 ###################################################################################
 
 ######################## use ASM as Forward Network ###############################
-# forward_network_config = 'ASM'
-# forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
-#                                      'ASM', F_aperture, prop_dists_from_wrp,
-#                                      dim=1)
-# forward_prop = forward_prop.to(device)
+forward_network_config = 'ASM'
+forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
+                                     'ASM', F_aperture, prop_dists_from_wrp,
+                                     dim=1)
+forward_prop = forward_prop.to(device)
 ###################################################################################
 
 
@@ -273,7 +273,7 @@ for i in range(max_epoch):
     total_train_loss, total_train_psnr = 0, 0
     train_items_count = 0
     # training steps
-    target_cnn.train()
+    inverse_prop.train()
     average_scale_factor = 0
     for imgs_masks_id in train_dataloader:
         imgs, masks, imgs_id = imgs_masks_id
@@ -347,7 +347,7 @@ for i in range(max_epoch):
     # Validation loop #
     ###################
     # test the model on validation set after every epoch
-    target_cnn.eval()
+    inverse_prop.eval()
     total_val_loss = 0
     total_val_psnr = 0
     val_items_count = 0
@@ -407,8 +407,12 @@ for i in range(max_epoch):
             # save model
             path = f"runs/{run_folder_name}/model/"
             if not os.path.exists(path):
-                os.makedirs(path) 
-            torch.save(target_cnn, f"{path}/{run_id}_best_loss.pth")
+                os.makedirs(path)
+            if inverse_network_config == 'cnn_asm_cnn':
+                torch.save(target_cnn, f"{path}/{run_id}_best_loss.pth")
+                torch.save(slm_cnn, f"{path}/{run_id}_best_loss_slm.pth")
+            else:
+                torch.save(target_cnn, f"{path}/{run_id}_best_loss.pth")
             writer.add_scalar("best_scale_factor", average_scale_factor, total_train_step)
             print("model saved!")
             

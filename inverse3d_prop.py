@@ -152,6 +152,41 @@ class InversePropagation():
         slm_phase = self.slm_cnn(torch.cat([slm_field.abs(), slm_field.angle()], dim=1))
         ##########################################################
         return slm_phase
+    
+    def train(self):
+        if self.config == 'cnn_only':
+            self.inverse_cnn.train()
+        elif self.config == 'cnn_asm_dpac':
+            self.target_cnn.train()
+        elif self.config == 'cnn_asm_cnn':
+            self.target_cnn.train()
+            self.slm_cnn.train()
+
+    def eval(self):
+        if self.config == 'cnn_only':
+            self.inverse_cnn.eval()
+        elif self.config == 'cnn_asm_dpac':
+            self.target_cnn.eval()
+        elif self.config == 'cnn_asm_cnn':
+            self.target_cnn.eval()
+            self.slm_cnn.eval()
+
+    def save(self, path):
+        if self.config == 'cnn_only':
+            torch.save(self.inverse_cnn, path)
+        elif self.config == 'cnn_asm_dpac':
+            torch.save(self.target_cnn, path)
+        elif self.config == 'cnn_asm_cnn':
+            torch.save(self.target_cnn, path)
+            torch.save(self.slm_cnn, path)
+
+    def configoptimizer(self, props, lr):
+        if self.config == 'cnn_only':
+            return torch.optim.Adam(self.inverse_cnn.parameters(), lr=lr)
+        elif self.config == 'cnn_asm_dpac':
+            return torch.optim.Adam(self.target_cnn.parameters(), lr=lr)
+        elif self.config == 'cnn_asm_cnn':
+            return torch.optim.Adam(list(self.target_cnn.parameters()) + list(self.slm_cnn.parameters()), lr=lr)
 
 
 if __name__ == '__main__':
