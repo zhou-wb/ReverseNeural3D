@@ -6,7 +6,6 @@ from datetime import datetime
 
 # propagation network related 
 from inverse3d_prop import UNetProp, ResNet_Prop, InversePropagation
-# from resnet_prop import ResNet_Prop
 from prop_model import CNNpropCNN_default
 import prop_ideal
 from propagation_ASM import propagation_ASM
@@ -44,7 +43,7 @@ F_aperture = 0.5
 
 device = torch.device('cuda:0')
 loss_fn = nn.MSELoss().to(device)
-learning_rate = 1e-4
+learning_rate = 1e-2
 max_epoch = 100000
 # If there are nan in output, consider enable this to debug
 # torch.autograd.set_detect_anomaly(True)
@@ -61,7 +60,7 @@ dataset_list = ['Hypersim', 'FlyingThings3D', 'MitCGH']
 dataset_id = 1
 dataset_name = dataset_list[dataset_id]
 loss_on_roi = True
-resize_to_1080p = True
+resize_to_1080p = False
 random_seed = 10 #random_seed = None for not shuffle
 
 if dataset_name == 'Hypersim':
@@ -162,51 +161,12 @@ inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only']
 network_id = 2
 inverse_network_config = inverse_network_list[network_id]
 
+inverse_prop = InversePropagation(inverse_network_config, prop_dists_from_wrp=prop_dists_from_wrp, prop_dist=prop_dist,
+                                     wavelength=wavelength, feature_size=feature_size, device=device, F_aperture=F_aperture,
+                                     image_res=image_res)
 
-if inverse_network_config == 'cnn_only':
-    # resnet based inverse network
-    inverse_cnn = ResNet_Prop(input_channel=len(prop_dists_from_wrp), output_channel=1)
-    
-    # unet based inverse network
-    # inverse_cnn = UNetProp(img_size=image_res, input_nc=len(prop_dists_from_wrp), output_nc=1)
-
-    inverse_cnn = inverse_cnn.to(device)
-    
-    props = {'inverse_cnn': inverse_cnn}
-    optimizer = torch.optim.Adam(inverse_cnn.parameters(), lr=learning_rate)
-    
-    
-elif inverse_network_config == 'cnn_asm_dpac':
-    target_cnn = ResNet_Prop(input_channel=len(prop_dists_from_wrp), output_channel=2)
-    target_cnn = target_cnn.to(device)
-    
-    asm_dpac = DPAC(prop_dist, wavelength, feature_size, prop_model='ASM', propagator=propagation_ASM, device=device)
-    asm_dpac = asm_dpac.to(device)
-    
-    props = {'target_cnn': target_cnn, 'asm_dpac':asm_dpac}
-    optimizer = torch.optim.Adam(target_cnn.parameters(), lr=learning_rate)
-
-
-elif inverse_network_config == 'cnn_asm_cnn':
-    target_cnn = ResNet_Prop(input_channel=len(prop_dists_from_wrp), output_channel=2)
-    target_cnn = target_cnn.to(device)
-
-    inverse_asm = prop_ideal.SerialProp(-prop_dist, wavelength, feature_size,
-                                        'ASM', F_aperture, None,
-                                        dim=1)
-    inverse_asm = inverse_asm.to(device)
-
-    slm_cnn = UNetProp(img_size=image_res, input_nc=2, output_nc=1)
-    slm_cnn = slm_cnn.to(device)
-    
-    props = {'target_cnn': target_cnn, 'inverse_asm':inverse_asm, 'slm_cnn':slm_cnn}
-    optimizer = torch.optim.Adam(list(target_cnn.parameters())+list(slm_cnn.parameters()), lr=learning_rate)
-
-
-# props = [{'inverse_cnn': inverse_cnn},
-#          {'target_cnn': target_cnn, 'asm_dpac':asm_dpac},
-#          {'target_cnn': target_cnn, 'inverse_asm':inverse_asm, 'slm_cnn':slm_cnn}]
-inverse_prop = InversePropagation(inverse_network_config, **props)
+inverse_prop = inverse_prop.to(device)
+optimizer = torch.optim.Adam(inverse_prop.parameters(), lr=learning_rate)
 
 
 ####################################
@@ -284,7 +244,7 @@ for i in range(max_epoch):
         masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
         nonzeros = masks > 0
         
-        slm_phase = inverse_prop.prop(masked_imgs)
+        slm_phase = inverse_prop(masked_imgs)
         outputs_field = forward_prop(slm_phase)
         
         outputs_field = utils.crop_image(outputs_field, roi_res, stacked_complex=False)
@@ -363,7 +323,7 @@ for i in range(max_epoch):
             masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
             nonzeros = masks > 0
             
-            slm_phase = inverse_prop.prop(masked_imgs)
+            slm_phase = inverse_prop(masked_imgs)
             outputs_field = forward_prop(slm_phase)
             
             outputs_field = utils.crop_image(outputs_field, roi_res, stacked_complex=False)
@@ -407,12 +367,8 @@ for i in range(max_epoch):
             # save model
             path = f"runs/{run_folder_name}/model/"
             if not os.path.exists(path):
-                os.makedirs(path)
-            if inverse_network_config == 'cnn_asm_cnn':
-                torch.save(target_cnn, f"{path}/{run_id}_best_loss.pth")
-                torch.save(slm_cnn, f"{path}/{run_id}_best_loss_slm.pth")
-            else:
-                torch.save(target_cnn, f"{path}/{run_id}_best_loss.pth")
+                os.makedirs(path) 
+            torch.save(inverse_prop, f"{path}/{run_id}_best_loss.pth")
             writer.add_scalar("best_scale_factor", average_scale_factor, total_train_step)
             print("model saved!")
             
