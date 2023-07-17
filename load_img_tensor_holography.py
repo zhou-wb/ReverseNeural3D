@@ -12,9 +12,7 @@ from PIL import Image
 from torchvision import transforms
 
 import numpy as np
-# from skimage.transform import resize
 from torchvision.transforms.functional import resize as resize_tensor
-# import imageio
 import sys
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -41,8 +39,6 @@ class Tensor_Holography_dataset(object):
     def __getitem__(self, index):
         img_path = os.path.join(self.img_dir, self.img_lst[index])
         depth_path = os.path.join(self.depth_dir, self.depth_lst[index])
-        # print(img_path)
-        # print(depth_path)
         original_img = cv.imread(img_path, cv.IMREAD_UNCHANGED)
         depth_img = cv.imread(depth_path, cv.IMREAD_ANYCOLOR | cv.IMREAD_ANYDEPTH)
         depth_img = depth_img[:, :, 0]
@@ -60,6 +56,7 @@ class Tensor_Holography_dataset(object):
         green_channel = original_img[1, :, :].unsqueeze(0)
 
         return [green_channel, masks_tensor, img_id]
+
     def cal_masks(self, depth_img):
         planes = [0, 0.33, 0.66, 1.0]
         masks = []
@@ -71,29 +68,4 @@ class Tensor_Holography_dataset(object):
             masks.append(mask)
         return masks
 
-# test = Tensor_Holography_dataset("/Users/lihanshuo/hku/sem2/project/code/ReverseNeural3D-back_forward_split/test_192")
-# couter = 0
-# for c in test:
-#     img = c[0]
-#     masks = c[1]
-#     img_id = c[2]
-#     print(img.shape)
-#     print(masks.shape)
-#     print(img_id)
-#     couter += 1
-# print(couter)
 
-
-# for item in my_img_loader:
-#     print(item)
-#     0 -- img #1 * w * h tensor
-#     1 -- masks 0 1 2 # 3 * w * h tensor
-#     2 -- img_id # str
-
-
-
-# img = cv.imread("/Users/lihanshuo/hku/sem2/project/code/ReverseNeural3D-back_forward_split/test_192/img/3965.exr",
-#           cv.IMREAD_UNCHANGED)
-# cv.imshow("test.exr", img)
-# cv.waitKey(0)
-# print(img[:, :, 0])
