@@ -5,11 +5,9 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
 # propagation network related 
-from inverse3d_prop import UNetProp, ResNet_Prop, InversePropagation
+from inverse3d_prop import InversePropagation
 from prop_model import CNNpropCNN_default
 import prop_ideal
-from propagation_ASM import propagation_ASM
-from algorithm import DPAC
 
 # dataset related
 from load_hypersim import hypersim_TargetLoader
@@ -43,7 +41,7 @@ F_aperture = 0.5
 
 device = torch.device('cuda:0')
 loss_fn = nn.MSELoss().to(device)
-learning_rate = 1e-2
+learning_rate = 1e-4
 max_epoch = 100000
 # If there are nan in output, consider enable this to debug
 # torch.autograd.set_detect_anomaly(True)
@@ -60,7 +58,7 @@ dataset_list = ['Hypersim', 'FlyingThings3D', 'MitCGH']
 dataset_id = 1
 dataset_name = dataset_list[dataset_id]
 loss_on_roi = True
-resize_to_1080p = False
+resize_to_1080p = True
 random_seed = 10 #random_seed = None for not shuffle
 
 if dataset_name == 'Hypersim':
@@ -139,7 +137,7 @@ elif dataset_name == 'FlyingThings3D':
                                        )
     #############################################################################################
 else:
-    raise ValueError(f'Dataset: {dataset_name} Not Implement!')
+    raise ValueError(f"Dataset: '{dataset_name}' Not Implement!")
     
 # check the size of the training set and validation set
 print(f"train set length: {len(train_loader)}")
@@ -158,7 +156,7 @@ val_dataloader = DataLoader(val_loader, batch_size=batch_size)
 
 # choose the network structure by set the config_id to 0,1,2
 inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only']
-network_id = 1
+network_id = 2
 inverse_network_config = inverse_network_list[network_id]
 
 inverse_prop = InversePropagation(inverse_network_config, prop_dists_from_wrp=prop_dists_from_wrp, prop_dist=prop_dist,
@@ -174,21 +172,21 @@ optimizer = torch.optim.Adam(inverse_prop.parameters(), lr=learning_rate)
 ####################################
 
 #################### use CNNpropCNN as Forward Network ############################
-# forward_network_config = 'CNNpropCNN'
-# if resize_to_1080p == False:
-#     raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model')
-# forward_prop = CNNpropCNN_default()
-# forward_prop = forward_prop.to(device)
-# for param in forward_prop.parameters():
-#     param.requires_grad = False
+forward_network_config = 'CNNpropCNN'
+if resize_to_1080p == False:
+    raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model!')
+forward_prop = CNNpropCNN_default()
+forward_prop = forward_prop.to(device)
+for param in forward_prop.parameters():
+    param.requires_grad = False
 ###################################################################################
 
 ######################## use ASM as Forward Network ###############################
-forward_network_config = 'ASM'
-forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
-                                     'ASM', F_aperture, prop_dists_from_wrp,
-                                     dim=1)
-forward_prop = forward_prop.to(device)
+# forward_network_config = 'ASM'
+# forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
+#                                      'ASM', F_aperture, prop_dists_from_wrp,
+#                                      dim=1)
+# forward_prop = forward_prop.to(device)
 ###################################################################################
 
 
@@ -335,7 +333,7 @@ for i in range(max_epoch):
             
             masked_imgs = utils.crop_image(masked_imgs, roi_res, stacked_complex=False) # need to check if process before network or only before loss 
             
-            # you can't computer the scale factor in validation or testing
+            # you can't compute the scale factor in validation or testing, use average_sacle_factor obtained in training instead
             # s = (final_amp * masked_imgs).mean() / \
             #     (final_amp ** 2).mean()  # scale minimizing MSE btw recon and target
             # writer.add_scalar("val_scale", s, total_train_step)
