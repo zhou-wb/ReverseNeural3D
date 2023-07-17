@@ -5,9 +5,11 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
 # propagation network related 
-from inverse3d_prop import InversePropagation
+from inverse3d_prop import UNetProp, ResNet_Prop, InversePropagation
 from prop_model import CNNpropCNN_default
 import prop_ideal
+from propagation_ASM import propagation_ASM
+from algorithm import DPAC
 
 # dataset related
 from load_hypersim import hypersim_TargetLoader
@@ -58,7 +60,8 @@ dataset_list = ['Hypersim', 'FlyingThings3D', 'MitCGH']
 dataset_id = 1
 dataset_name = dataset_list[dataset_id]
 loss_on_roi = True
-resize_to_1080p = True
+resize_to_1080p = False
+for_uformer = True
 random_seed = 10 #random_seed = None for not shuffle
 
 if dataset_name == 'Hypersim':
@@ -84,6 +87,10 @@ if dataset_name == 'Hypersim':
             roi_res = (680, 900)
         else:
             roi_res = (768, 1024)
+    if for_uformer:
+        image_res = (256, 256)
+        roi_res = (224, 224)
+
     train_loader = hypersim_TargetLoader(data_path=data_path, 
                                         channel=1, image_res=image_res, roi_res=roi_res,
                                         virtual_depth_planes=virtual_depth_planes,
@@ -105,7 +112,7 @@ elif dataset_name == 'FlyingThings3D':
     # Load training set and validation set seperatly.
     # Set the slice parameter accordingly to get desired size of train/val sets
     # Original Resolution: (540, 960)
-    data_path = '/media/datadrive/flying3D'
+    data_path = '/userhome/cs2/u3603320/dataset/flying3d'
     if resize_to_1080p:
         image_res = (1080, 1920)
         if loss_on_roi:
@@ -118,6 +125,10 @@ elif dataset_name == 'FlyingThings3D':
             roi_res = (480, 840)
         else:
             roi_res = (540, 960)
+    if for_uformer:
+        image_res = (256, 256)
+        roi_res = (224, 224)
+
     train_loader = FlyingThings3D_loader(data_path=data_path,
                                          channel=1, image_res=image_res, roi_res=roi_res,
                                          virtual_depth_planes=virtual_depth_planes,
@@ -137,7 +148,7 @@ elif dataset_name == 'FlyingThings3D':
                                        )
     #############################################################################################
 else:
-    raise ValueError(f"Dataset: '{dataset_name}' Not Implement!")
+    raise ValueError(f'Dataset: {dataset_name} Not Implement!')
     
 # check the size of the training set and validation set
 print(f"train set length: {len(train_loader)}")
@@ -155,8 +166,8 @@ val_dataloader = DataLoader(val_loader, batch_size=batch_size)
 ####################################
 
 # choose the network structure by set the config_id to 0,1,2
-inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only']
-network_id = 2
+inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only', 'vit_2d']
+network_id = 4
 inverse_network_config = inverse_network_list[network_id]
 
 inverse_prop = InversePropagation(inverse_network_config, prop_dists_from_wrp=prop_dists_from_wrp, prop_dist=prop_dist,
@@ -172,21 +183,21 @@ optimizer = torch.optim.Adam(inverse_prop.parameters(), lr=learning_rate)
 ####################################
 
 #################### use CNNpropCNN as Forward Network ############################
-forward_network_config = 'CNNpropCNN'
-if resize_to_1080p == False:
-    raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model!')
-forward_prop = CNNpropCNN_default()
-forward_prop = forward_prop.to(device)
-for param in forward_prop.parameters():
-    param.requires_grad = False
+# forward_network_config = 'CNNpropCNN'
+# if resize_to_1080p == False:
+#     raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model')
+# forward_prop = CNNpropCNN_default()
+# forward_prop = forward_prop.to(device)
+# for param in forward_prop.parameters():
+#     param.requires_grad = False
 ###################################################################################
 
 ######################## use ASM as Forward Network ###############################
-# forward_network_config = 'ASM'
-# forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
-#                                      'ASM', F_aperture, prop_dists_from_wrp,
-#                                      dim=1)
-# forward_prop = forward_prop.to(device)
+forward_network_config = 'ASM'
+forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
+                                     'ASM', F_aperture, prop_dists_from_wrp,
+                                     dim=1)
+forward_prop = forward_prop.to(device)
 ###################################################################################
 
 
@@ -214,7 +225,7 @@ print('Learning Rate:', learning_rate)
 print('Image Resolution:', image_res)
 print('ROI Resolution:', roi_res)
 print('Batch Size:', batch_size)
-input("Press Enter to continue...")
+# input("Press Enter to continue...")
 run_folder_name = time_str + '-' + run_id
 writer = SummaryWriter(f'runs/{run_folder_name}')
 writer.add_scalar("learning_rate", learning_rate)
@@ -241,8 +252,11 @@ for i in range(max_epoch):
         
         masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
         nonzeros = masks > 0
-        
-        slm_phase = inverse_prop(masked_imgs)
+
+        if inverse_network_config == 'vit_2d':
+            slm_phase = inverse_prop(imgs)
+        else:
+            slm_phase = inverse_prop(masked_imgs)
         outputs_field = forward_prop(slm_phase)
         
         outputs_field = utils.crop_image(outputs_field, roi_res, stacked_complex=False)
@@ -333,7 +347,7 @@ for i in range(max_epoch):
             
             masked_imgs = utils.crop_image(masked_imgs, roi_res, stacked_complex=False) # need to check if process before network or only before loss 
             
-            # you can't compute the scale factor in validation or testing, use average_sacle_factor obtained in training instead
+            # you can't computer the scale factor in validation or testing
             # s = (final_amp * masked_imgs).mean() / \
             #     (final_amp ** 2).mean()  # scale minimizing MSE btw recon and target
             # writer.add_scalar("val_scale", s, total_train_step)
