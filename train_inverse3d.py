@@ -110,7 +110,7 @@ elif dataset_name == 'FlyingThings3D':
     # Load training set and validation set seperatly.
     # Set the slice parameter accordingly to get desired size of train/val sets
     # Original Resolution: (540, 960)
-    data_path = '/userhome/cs2/u3603320/dataset/flying3d'
+    data_path = '/media/datadrive/flying3D'
     if resize_to_1080p:
         image_res = (1080, 1920)
         if loss_on_roi:
@@ -146,7 +146,7 @@ elif dataset_name == 'FlyingThings3D':
                                        )
     #############################################################################################
 else:
-    raise ValueError(f'Dataset: {dataset_name} Not Implement!')
+    raise ValueError(f"Dataset: '{dataset_name}' Not Implement!")
     
 # check the size of the training set and validation set
 print(f"train set length: {len(train_loader)}")
@@ -223,7 +223,7 @@ print('Learning Rate:', learning_rate)
 print('Image Resolution:', image_res)
 print('ROI Resolution:', roi_res)
 print('Batch Size:', batch_size)
-# input("Press Enter to continue...")
+input("Press Enter to continue...")
 run_folder_name = time_str + '-' + run_id
 writer = SummaryWriter(f'runs/{run_folder_name}')
 writer.add_scalar("learning_rate", learning_rate)
@@ -345,7 +345,7 @@ for i in range(max_epoch):
             
             masked_imgs = utils.crop_image(masked_imgs, roi_res, stacked_complex=False) # need to check if process before network or only before loss 
             
-            # you can't computer the scale factor in validation or testing
+            # you can't compute the scale factor in validation or testing, use average_sacle_factor obtained in training instead
             # s = (final_amp * masked_imgs).mean() / \
             #     (final_amp ** 2).mean()  # scale minimizing MSE btw recon and target
             # writer.add_scalar("val_scale", s, total_train_step)
