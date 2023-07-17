@@ -58,7 +58,8 @@ dataset_list = ['Hypersim', 'FlyingThings3D', 'MitCGH']
 dataset_id = 1
 dataset_name = dataset_list[dataset_id]
 loss_on_roi = True
-resize_to_1080p = True
+resize_to_1080p = False
+for_uformer = True
 random_seed = 10 #random_seed = None for not shuffle
 
 if dataset_name == 'Hypersim':
@@ -84,6 +85,10 @@ if dataset_name == 'Hypersim':
             roi_res = (680, 900)
         else:
             roi_res = (768, 1024)
+    if for_uformer:
+        image_res = (256, 256)
+        roi_res = (224, 224)
+
     train_loader = hypersim_TargetLoader(data_path=data_path, 
                                         channel=1, image_res=image_res, roi_res=roi_res,
                                         virtual_depth_planes=virtual_depth_planes,
@@ -118,6 +123,10 @@ elif dataset_name == 'FlyingThings3D':
             roi_res = (480, 840)
         else:
             roi_res = (540, 960)
+    if for_uformer:
+        image_res = (256, 256)
+        roi_res = (224, 224)
+
     train_loader = FlyingThings3D_loader(data_path=data_path,
                                          channel=1, image_res=image_res, roi_res=roi_res,
                                          virtual_depth_planes=virtual_depth_planes,
@@ -155,8 +164,8 @@ val_dataloader = DataLoader(val_loader, batch_size=batch_size)
 ####################################
 
 # choose the network structure by set the config_id to 0,1,2
-inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only']
-network_id = 2
+inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only', 'vit_2d']
+network_id = 4
 inverse_network_config = inverse_network_list[network_id]
 
 inverse_prop = InversePropagation(inverse_network_config, prop_dists_from_wrp=prop_dists_from_wrp, prop_dist=prop_dist,
@@ -172,21 +181,21 @@ optimizer = torch.optim.Adam(inverse_prop.parameters(), lr=learning_rate)
 ####################################
 
 #################### use CNNpropCNN as Forward Network ############################
-forward_network_config = 'CNNpropCNN'
-if resize_to_1080p == False:
-    raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model!')
-forward_prop = CNNpropCNN_default()
-forward_prop = forward_prop.to(device)
-for param in forward_prop.parameters():
-    param.requires_grad = False
+# forward_network_config = 'CNNpropCNN'
+# if resize_to_1080p == False:
+#     raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model')
+# forward_prop = CNNpropCNN_default()
+# forward_prop = forward_prop.to(device)
+# for param in forward_prop.parameters():
+#     param.requires_grad = False
 ###################################################################################
 
 ######################## use ASM as Forward Network ###############################
-# forward_network_config = 'ASM'
-# forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
-#                                      'ASM', F_aperture, prop_dists_from_wrp,
-#                                      dim=1)
-# forward_prop = forward_prop.to(device)
+forward_network_config = 'ASM'
+forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
+                                     'ASM', F_aperture, prop_dists_from_wrp,
+                                     dim=1)
+forward_prop = forward_prop.to(device)
 ###################################################################################
 
 
@@ -241,8 +250,11 @@ for i in range(max_epoch):
         
         masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
         nonzeros = masks > 0
-        
-        slm_phase = inverse_prop(masked_imgs)
+
+        if inverse_network_config == 'vit_2d':
+            slm_phase = inverse_prop(imgs)
+        else:
+            slm_phase = inverse_prop(masked_imgs)
         outputs_field = forward_prop(slm_phase)
         
         outputs_field = utils.crop_image(outputs_field, roi_res, stacked_complex=False)
