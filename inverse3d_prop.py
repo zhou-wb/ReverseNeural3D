@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-from torch.nn import functional as F
 from unet import UnetGenerator, init_weights
 import utils
 from torchsummary import summary
