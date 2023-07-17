@@ -5,11 +5,9 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
 # propagation network related 
-from inverse3d_prop import UNetProp, ResNet_Prop, InversePropagation
+from inverse3d_prop import InversePropagation
 from prop_model import CNNpropCNN_default
 import prop_ideal
-from propagation_ASM import propagation_ASM
-from algorithm import DPAC
 
 # dataset related
 from load_hypersim import hypersim_TargetLoader
