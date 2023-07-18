@@ -26,7 +26,8 @@ prop_dists_from_wrp = [-0.0044, -0.0032000000000000006, -0.0024000000000000002, 
 # depth in diopter space (m^-1) to compute the masks for rgbd input
 virtual_depth_planes = [0.0, 0.08417508417508479, 0.14124293785310726, 0.24299599771297942, 0.3171856978085348, 0.4155730533683304, 0.5319148936170226, 0.6112104949314254]
 # specify how many target planes used to compute loss here
-plane_idx = [0, 1, 2, 3, 4, 5, 6, 7]
+# plane_idx = [0, 1, 2, 3, 4, 5, 6, 7]
+plane_idx = [4]
 prop_dists_from_wrp = [prop_dists_from_wrp[idx] for idx in plane_idx]
 virtual_depth_planes = [virtual_depth_planes[idx] for idx in plane_idx]
 wavelength = 5.177e-07
@@ -57,7 +58,7 @@ batch_size = 1
 dataset_list = ['Hypersim', 'FlyingThings3D', 'MitCGH']
 dataset_id = 1
 dataset_name = dataset_list[dataset_id]
-loss_on_roi = True
+loss_on_roi = False
 resize_to_1080p = False
 for_uformer = True
 random_seed = 10 #random_seed = None for not shuffle
@@ -86,8 +87,11 @@ if dataset_name == 'Hypersim':
         else:
             roi_res = (768, 1024)
     if for_uformer:
-        image_res = (512, 512)
-        roi_res = (448, 448)
+        # image_res = (512, 512)
+        # roi_res = (448, 448)
+        image_res = (256, 256)
+        roi_res = (224, 224)
+
 
     train_loader = hypersim_TargetLoader(data_path=data_path, 
                                         channel=1, image_res=image_res, roi_res=roi_res,
@@ -124,6 +128,8 @@ elif dataset_name == 'FlyingThings3D':
         else:
             roi_res = (540, 960)
     if for_uformer:
+        # image_res = (512, 512)
+        # roi_res = (448, 448)
         image_res = (256, 256)
         roi_res = (224, 224)
 
@@ -164,8 +170,8 @@ val_dataloader = DataLoader(val_loader, batch_size=batch_size)
 ####################################
 
 # choose the network structure by set the config_id to 0,1,2
-inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only', 'vit_2d']
-network_id = 4
+inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only']
+network_id = 3
 inverse_network_config = inverse_network_list[network_id]
 
 inverse_prop = InversePropagation(inverse_network_config, prop_dists_from_wrp=prop_dists_from_wrp, prop_dist=prop_dist,
@@ -223,6 +229,7 @@ print('Learning Rate:', learning_rate)
 print('Image Resolution:', image_res)
 print('ROI Resolution:', roi_res)
 print('Batch Size:', batch_size)
+print('Number of Target Planes:', len(plane_idx))
 input("Press Enter to continue...")
 run_folder_name = time_str + '-' + run_id
 writer = SummaryWriter(f'runs/{run_folder_name}')
@@ -251,10 +258,7 @@ for i in range(max_epoch):
         masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
         nonzeros = masks > 0
 
-        if inverse_network_config == 'vit_2d':
-            slm_phase = inverse_prop(imgs)
-        else:
-            slm_phase = inverse_prop(masked_imgs)
+        slm_phase = inverse_prop(masked_imgs)
         outputs_field = forward_prop(slm_phase)
         
         outputs_field = utils.crop_image(outputs_field, roi_res, stacked_complex=False)
@@ -333,12 +337,8 @@ for i in range(max_epoch):
             masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
             nonzeros = masks > 0
             
-            if inverse_network_config == 'vit_2d':
-                slm_phase = inverse_prop(imgs)
-            else:
-                slm_phase = inverse_prop(masked_imgs)
-            
-            # slm_phase = inverse_prop(masked_imgs)
+            slm_phase = inverse_prop(masked_imgs)
+         
             outputs_field = forward_prop(slm_phase)
             
             outputs_field = utils.crop_image(outputs_field, roi_res, stacked_complex=False)
