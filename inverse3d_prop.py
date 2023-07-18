@@ -136,7 +136,7 @@ class InversePropagation(nn.Module):
             self.forward = self.inverse_CNN_ASM_CNN
         elif self.config == 'vit_only':
             self.uformer = Uformer(img_size=kwargs['image_res'][0], embed_dim=32, win_size=8, token_projection='linear',
-                                   token_mlp='leff', modulator=True, dd_in=8, in_chans=1)
+                                   token_mlp='leff', modulator=True, dd_in=len(kwargs['prop_dists_from_wrp']), in_chans=1)
             self.forward = self.inverse_VIT_only
         elif self.config == 'vit_2d':
             self.uformer2d = Uformer(img_size=kwargs['image_res'][0], embed_dim=32, win_size=8, token_projection='linear',

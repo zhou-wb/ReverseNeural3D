@@ -86,8 +86,8 @@ if dataset_name == 'Hypersim':
         else:
             roi_res = (768, 1024)
     if for_uformer:
-        image_res = (256, 256)
-        roi_res = (224, 224)
+        image_res = (512, 512)
+        roi_res = (448, 448)
 
     train_loader = hypersim_TargetLoader(data_path=data_path, 
                                         channel=1, image_res=image_res, roi_res=roi_res,
@@ -333,7 +333,12 @@ for i in range(max_epoch):
             masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
             nonzeros = masks > 0
             
-            slm_phase = inverse_prop(masked_imgs)
+            if inverse_network_config == 'vit_2d':
+                slm_phase = inverse_prop(imgs)
+            else:
+                slm_phase = inverse_prop(masked_imgs)
+            
+            # slm_phase = inverse_prop(masked_imgs)
             outputs_field = forward_prop(slm_phase)
             
             outputs_field = utils.crop_image(outputs_field, roi_res, stacked_complex=False)
