@@ -26,8 +26,8 @@ prop_dists_from_wrp = [-0.0044, -0.0032000000000000006, -0.0024000000000000002, 
 # depth in diopter space (m^-1) to compute the masks for rgbd input
 virtual_depth_planes = [0.0, 0.08417508417508479, 0.14124293785310726, 0.24299599771297942, 0.3171856978085348, 0.4155730533683304, 0.5319148936170226, 0.6112104949314254]
 # specify how many target planes used to compute loss here
-# plane_idx = [0, 1, 2, 3, 4, 5, 6, 7]
-plane_idx = [4]
+plane_idx = [0, 1, 2, 3, 4, 5, 6, 7]
+# plane_idx = [4]
 prop_dists_from_wrp = [prop_dists_from_wrp[idx] for idx in plane_idx]
 virtual_depth_planes = [virtual_depth_planes[idx] for idx in plane_idx]
 wavelength = 5.177e-07
@@ -44,6 +44,15 @@ device = torch.device('cuda:0')
 loss_fn = nn.MSELoss().to(device)
 learning_rate = 1e-4
 max_epoch = 100000
+
+loss_type_list = ['in-focus-loss', 'all-image-loss']
+loss_id = 0
+loss_type_config = loss_type_list[loss_id]
+
+if loss_type_config == 'in-focus-loss':
+    return_type = 'image_mask_id'
+elif loss_type_config == 'all-image-loss':
+    return_type = 'image_mask_focalstack_id'
 # If there are nan in output, consider enable this to debug
 # torch.autograd.set_detect_anomaly(True)
 
@@ -58,9 +67,9 @@ batch_size = 1
 dataset_list = ['Hypersim', 'FlyingThings3D', 'MitCGH']
 dataset_id = 1
 dataset_name = dataset_list[dataset_id]
-loss_on_roi = False
-resize_to_1080p = False
-for_uformer = True
+loss_on_roi = True
+resize_to_1080p = True
+for_uformer = False
 random_seed = 10 #random_seed = None for not shuffle
 
 if dataset_name == 'Hypersim':
@@ -91,19 +100,18 @@ if dataset_name == 'Hypersim':
         # roi_res = (448, 448)
         image_res = (256, 256)
         roi_res = (224, 224)
-
-
+    
     train_loader = hypersim_TargetLoader(data_path=data_path, 
                                         channel=1, image_res=image_res, roi_res=roi_res,
                                         virtual_depth_planes=virtual_depth_planes,
-                                        return_type='image_mask_id',
+                                        return_type=return_type,
                                         random_seed=random_seed,
                                         slice=(0,0.1),
                                         )
     val_loader = hypersim_TargetLoader(data_path=data_path, 
                                     channel=1, image_res=image_res, roi_res=roi_res,
                                     virtual_depth_planes=virtual_depth_planes,
-                                    return_type='image_mask_id',
+                                    return_type=return_type,
                                     random_seed=random_seed,
                                     slice=(0.96,1),
                                     )
@@ -136,7 +144,7 @@ elif dataset_name == 'FlyingThings3D':
     train_loader = FlyingThings3D_loader(data_path=data_path,
                                          channel=1, image_res=image_res, roi_res=roi_res,
                                          virtual_depth_planes=virtual_depth_planes,
-                                         return_type='image_mask_id',
+                                         return_type=return_type,
                                          random_seed=random_seed,
                                          # slice=(0,0.025),
                                          # slice=(0,0.1),
@@ -145,7 +153,7 @@ elif dataset_name == 'FlyingThings3D':
     val_loader = FlyingThings3D_loader(data_path=data_path,
                                        channel=1, image_res=image_res, roi_res=roi_res,
                                        virtual_depth_planes=virtual_depth_planes,
-                                       return_type='image_mask_id',
+                                       return_type=return_type,
                                        random_seed=random_seed,
                                        # slice=(0.995,1),
                                        slice=(0.2,0.205),
@@ -171,12 +179,12 @@ val_dataloader = DataLoader(val_loader, batch_size=batch_size)
 
 # choose the network structure by set the config_id to 0,1,2
 inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only']
-network_id = 3
+network_id = 2
 inverse_network_config = inverse_network_list[network_id]
 
 inverse_prop = InversePropagation(inverse_network_config, prop_dists_from_wrp=prop_dists_from_wrp, prop_dist=prop_dist,
-                                     wavelength=wavelength, feature_size=feature_size, device=device, F_aperture=F_aperture,
-                                     image_res=image_res)
+                                  wavelength=wavelength, feature_size=feature_size, device=device, F_aperture=F_aperture,
+                                  image_res=image_res)
 
 inverse_prop = inverse_prop.to(device)
 optimizer = torch.optim.Adam(inverse_prop.parameters(), lr=learning_rate)
@@ -185,6 +193,10 @@ optimizer = torch.optim.Adam(inverse_prop.parameters(), lr=learning_rate)
 ####################################
 # Load Networks -- Forward Network #
 ####################################
+
+forward_prop_list = ['ASM', 'CNNpropCNN']
+forward_prop_id = 0
+forward_prop_config = forward_prop_list[forward_prop_id]
 
 #################### use CNNpropCNN as Forward Network ############################
 # forward_network_config = 'CNNpropCNN'
@@ -221,7 +233,8 @@ best_test_psnr = 0
 time_str = str(datetime.now()).replace(' ', '-').replace(':', '-')
 run_id = dataset_name + '-' + inverse_network_config + '-' + \
     str(learning_rate) + '-' + forward_network_config + '-' + \
-    f'{image_res[0]}_{image_res[1]}-{roi_res[0]}_{roi_res[1]}'
+    f'{image_res[0]}_{image_res[1]}-{roi_res[0]}_{roi_res[1]}' + '-' + \
+    f'{len(plane_idx)}_target_planes' + '-' + loss_type_config
 print('Dataset:', dataset_name)
 print('Inverse Network:', inverse_network_config)
 print('Forward Prop:', forward_network_config)
@@ -230,6 +243,8 @@ print('Image Resolution:', image_res)
 print('ROI Resolution:', roi_res)
 print('Batch Size:', batch_size)
 print('Number of Target Planes:', len(plane_idx))
+print('Loss Type:', loss_type_config)
+print('The Network will be Trained on:', torch.cuda.get_device_name(device))
 input("Press Enter to continue...")
 run_folder_name = time_str + '-' + run_id
 writer = SummaryWriter(f'runs/{run_folder_name}')
@@ -250,35 +265,53 @@ for i in range(max_epoch):
     inverse_prop.train()
     average_scale_factor = 0
     for imgs_masks_id in train_dataloader:
-        imgs, masks, imgs_id = imgs_masks_id
+        
+        if loss_type_config == 'in-focus-loss':
+            imgs, masks, imgs_id = imgs_masks_id
+        elif loss_type_config == 'all-image-loss':
+            imgs, masks, focalstack, imgs_id = imgs_masks_id
+            focalstack = focalstack.to(device)
+
         imgs = imgs.to(device)
         masks = masks.to(device)
         masked_imgs = imgs * masks
-        
-        masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
-        nonzeros = masks > 0
 
+        # inverse propagation
         slm_phase = inverse_prop(masked_imgs)
+        # forward propagation
         outputs_field = forward_prop(slm_phase)
-        
-        outputs_field = utils.crop_image(outputs_field, roi_res, stacked_complex=False)
-        
         outputs_amp = outputs_field.abs()
-        final_amp = torch.zeros_like(outputs_amp)
-        final_amp[nonzeros] += (outputs_amp[nonzeros] * masks[nonzeros])
         
-        masked_imgs = utils.crop_image(masked_imgs, roi_res, stacked_complex=False) # need to check if process before network or only before loss 
+        imgs = utils.crop_image(imgs, roi_res, stacked_complex=False)
+        masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
+        outputs_amp = utils.crop_image(outputs_amp, roi_res, stacked_complex=False)
         
-        with torch.no_grad():
-            s = (final_amp * masked_imgs).mean() / \
-                (final_amp ** 2).mean()  # scale minimizing MSE btw recon and target
-            average_scale_factor += s
+        if loss_type_config == 'in-focus-loss':
+            nonzeros = masks > 0
+            final_amp = torch.zeros_like(outputs_amp)
+            final_amp[nonzeros] += (outputs_amp[nonzeros] * masks[nonzeros])
+            masked_imgs = utils.crop_image(masked_imgs, roi_res, stacked_complex=False)
+
+            with torch.no_grad():
+                # s = (final_amp * masked_imgs).mean() / \
+                #     (final_amp ** 2).mean()  # scale minimizing MSE btw recon and target
+                s = 1
+                average_scale_factor += s
+            loss = loss_fn(s * final_amp, masked_imgs)
+        
+        elif loss_type_config == 'all-image-loss':
+            focalstack = utils.crop_image(focalstack, roi_res, stacked_complex=False)
+        
+            with torch.no_grad():
+                s = (outputs_amp * focalstack).mean() / \
+                    (outputs_amp ** 2).mean()  # scale minimizing MSE btw recon and target
+                average_scale_factor += s
+            loss = loss_fn(s * outputs_amp, focalstack)
+        
         writer.add_scalar("scale", s, total_train_step)
-        loss = loss_fn(s * final_amp, masked_imgs)
         
         with torch.no_grad(): 
-            imgs = utils.crop_image(imgs, roi_res, stacked_complex=False)
-            psnr = utils.calculate_psnr(utils.target_planes_to_one_image(s * final_amp, masks), utils.target_planes_to_one_image(imgs, masks))
+            psnr = utils.calculate_psnr(utils.target_planes_to_one_image(s * outputs_amp, masks), imgs[:,0])
         
         total_train_loss += loss.item()
         total_train_psnr += psnr.item()
@@ -328,33 +361,43 @@ for i in range(max_epoch):
     record_id = random.randrange(len(val_loader)//batch_size)
     # record_id = 0
     with torch.no_grad():
-        for imgs_masks_id in val_dataloader:
-            imgs, masks, imgs_id = imgs_masks_id
+        for imgs_masks_id in val_dataloader: 
+            if loss_type_config == 'in-focus-loss':
+                imgs, masks, imgs_id = imgs_masks_id
+            elif loss_type_config == 'all-image-loss':
+                imgs, masks, focalstack, imgs_id = imgs_masks_id
+                focalstack = focalstack.to(device)
+
             imgs = imgs.to(device)
             masks = masks.to(device)
             masked_imgs = imgs * masks
             
-            masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
-            nonzeros = masks > 0
-            
+            # inverse propagation
             slm_phase = inverse_prop(masked_imgs)
-         
+            # forward propagation
             outputs_field = forward_prop(slm_phase)
-            
-            outputs_field = utils.crop_image(outputs_field, roi_res, stacked_complex=False)
-            
             outputs_amp = outputs_field.abs()
-            # final_amp = outputs_amp*masks
-            final_amp = torch.zeros_like(outputs_amp)
-            final_amp[nonzeros] += (outputs_amp[nonzeros] * masks[nonzeros])
             
-            masked_imgs = utils.crop_image(masked_imgs, roi_res, stacked_complex=False) # need to check if process before network or only before loss 
+            imgs = utils.crop_image(imgs, roi_res, stacked_complex=False)
+            masks = utils.crop_image(masks, roi_res, stacked_complex=False) # need to check if process before network
+            outputs_amp = utils.crop_image(outputs_amp, roi_res, stacked_complex=False)
             
-            # you can't compute the scale factor in validation or testing, use average_sacle_factor obtained in training instead
-            # s = (final_amp * masked_imgs).mean() / \
-            #     (final_amp ** 2).mean()  # scale minimizing MSE btw recon and target
-            # writer.add_scalar("val_scale", s, total_train_step)
-            loss = loss_fn(average_scale_factor * final_amp, masked_imgs)
+            if loss_type_config == 'in-focus-loss':
+                nonzeros = masks > 0
+                final_amp = torch.zeros_like(outputs_amp)
+                final_amp[nonzeros] += (outputs_amp[nonzeros] * masks[nonzeros])
+                masked_imgs = utils.crop_image(masked_imgs, roi_res, stacked_complex=False)
+                
+                loss = loss_fn(average_scale_factor * final_amp, masked_imgs)
+            
+            elif loss_type_config == 'all-image-loss':
+                focalstack = utils.crop_image(focalstack, roi_res, stacked_complex=False)
+            
+                loss = loss_fn(average_scale_factor * outputs_amp, focalstack)
+            
+            
+            with torch.no_grad(): 
+                psnr = utils.calculate_psnr(utils.target_planes_to_one_image(average_scale_factor * outputs_amp, masks), imgs[:,0])
             
             if val_items_count == record_id:
                 # mapped_slm_phase = ((slm_phase + np.pi) % (2 * np.pi)) / (2 * np.pi)
@@ -367,9 +410,6 @@ for i in range(max_epoch):
                     # writer.add_image(f'input_images_plane{i}', masked_imgs.squeeze()[i,:,:], total_train_step, dataformats='CHW')
                     # writer.add_image(f'output_image_plane{i}', outputs_amp.squeeze()[i,:,:], total_train_step, dataformats='CHW')
                 writer.flush()
-            
-            imgs = utils.crop_image(imgs, roi_res, stacked_complex=False)
-            psnr = utils.calculate_psnr(utils.target_planes_to_one_image(average_scale_factor * final_amp, masks), utils.target_planes_to_one_image(imgs, masks))
             
             total_val_loss += loss.item()
             total_val_psnr += psnr.item()

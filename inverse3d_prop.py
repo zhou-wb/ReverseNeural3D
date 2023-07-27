@@ -16,10 +16,10 @@ from model import Uformer
 #####################
 
 class UNetProp(nn.Module):
-    def __init__(self, img_size, input_nc, output_nc) -> None:
+    def __init__(self, img_size, input_nc, output_nc, num_downs=8) -> None:
         super().__init__()
         
-        num_downs = 8
+        num_downs = num_downs
         num_feats_min = 32
         num_feats_max = 512
         norm = nn.InstanceNorm2d
@@ -74,36 +74,36 @@ class residual_block(nn.Module):
         return out
 
 class ResNet_Prop(nn.Module):
-    def __init__(self,input_channel=3,output_channel=2,block_num=30) -> None:
+    def __init__(self,input_channel=3,output_channel=2,hidden_dim=24,block_num=6) -> None:
         super().__init__()
         self.input_channel=input_channel
+        self.hidden_dim = hidden_dim
+        self.block_num = block_num
         self.output_channel=output_channel
-        self.first_layer=nn.Sequential(
-            nn.Conv2d(self.input_channel,24,kernel_size=3,padding=1,bias=False),
-            nn.BatchNorm2d(24),
+        self.input_layer=nn.Sequential(
+            nn.Conv2d(self.input_channel,self.hidden_dim,kernel_size=3,padding=1,bias=False),
+            nn.BatchNorm2d(self.hidden_dim),
             nn.ReLU()
         )
-        self.layer1=self.make_layer(3, 24,block_num=1)
-        self.layer2=self.make_layer(24,24,block_num=15)
-        self.last_layer=nn.Sequential(
-            nn.Conv2d(self.input_channel+24,self.output_channel,kernel_size=3,padding=1,bias=False),
+        self.middle_layer=self.make_layer(self.hidden_dim, self.hidden_dim, block_num=self.block_num)
+        self.output_layer=nn.Sequential(
+            nn.Conv2d(self.input_channel+self.hidden_dim,self.output_channel,kernel_size=3,padding=1,bias=False),
             nn.BatchNorm2d(self.output_channel),
             nn.ReLU()
         )
     
     def forward(self,x):
         identity = x
-        x = self.first_layer(x)
-        # out=self.layer1(x)
-        out=self.layer2(x)
+        x = self.input_layer(x)
+        out=self.middle_layer(x)
         out = torch.cat((identity,out),dim=1) # concat channel
-        out=self.last_layer(out)
+        out=self.output_layer(out)
         return out
     
-    def make_layer(self, input_channel, output_channel, block_num=30,stride=1):
+    def make_layer(self, input_channel, output_channel, block_num,stride=1):
         layers=[]
         layers.append(residual_block(input_channel,output_channel))
-        for _ in (1,block_num):
+        for _ in range(1, block_num):
             layers.append(residual_block(output_channel,output_channel))
         return nn. Sequential(*layers)
 
@@ -119,7 +119,7 @@ class InversePropagation(nn.Module):
         super().__init__()
         self.config = inverse_network_config
         if self.config == 'cnn_only':
-            self.inverse_cnn = ResNet_Prop(input_channel=len(kwargs['prop_dists_from_wrp']), output_channel=1)
+            self.inverse_cnn = ResNet_Prop(input_channel=len(kwargs['prop_dists_from_wrp']), output_channel=1, block_num=30)
             # self.inverse_cnn = UNetProp(img_size=kwargs['image_res'], input_nc=len(kwargs['prop_dists_from_wrp']), output_nc=1)
             self.forward = self.inverse_CNN_only
         elif self.config == 'cnn_asm_dpac':
@@ -128,11 +128,12 @@ class InversePropagation(nn.Module):
                                  propagator=propagation_ASM, device=kwargs['device'])
             self.forward = self.inverse_CNN_ASM_DPAC
         elif self.config == 'cnn_asm_cnn':
-            self.target_cnn = ResNet_Prop(input_channel=len(kwargs['prop_dists_from_wrp']), output_channel=2)
+            self.target_cnn = UNetProp(img_size=kwargs['image_res'], input_nc=len(kwargs['prop_dists_from_wrp']), output_nc=2, num_downs=4)
+            # self.target_cnn = ResNet_Prop(input_channel=len(kwargs['prop_dists_from_wrp']), output_channel=2, block_num=4)
             self.inverse_asm = prop_ideal.SerialProp(-kwargs['prop_dist'], kwargs['wavelength'], kwargs['feature_size'],
                                         'ASM', kwargs['F_aperture'], None,
                                         dim=1)
-            self.slm_cnn = UNetProp(img_size=kwargs['image_res'], input_nc=2, output_nc=1)
+            self.slm_cnn = UNetProp(img_size=kwargs['image_res'], input_nc=2, output_nc=1, num_downs=4)
             self.forward = self.inverse_CNN_ASM_CNN
         elif self.config == 'vit_only':
             self.uformer = Uformer(img_size=kwargs['image_res'][0], embed_dim=32, win_size=8, token_projection='linear',
@@ -188,6 +189,6 @@ class InversePropagation(nn.Module):
 
 
 if __name__ == '__main__':
-    reverse_prop = UNetProp()
+    reverse_prop = UNetProp((540,960), input_nc=8, output_nc=1, num_downs=8)
     reverse_prop = reverse_prop.cuda()
-    summary(reverse_prop, (8, 1080, 1920))
+    summary(reverse_prop, (8, 540, 960))

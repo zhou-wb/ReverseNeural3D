@@ -454,7 +454,7 @@ def target_planes_to_one_image(target_planes_imgs, masks):
     :masks: tensor with the same shape as target_planes_imgs
     
     Return:
-    return a tensor with shape [N, W, H]
+    return a tensor with shape [B, W, H]
     """
     return torch.sum(target_planes_imgs*masks, dim=1)
 

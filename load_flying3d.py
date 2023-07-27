@@ -6,6 +6,7 @@ import cv2
 import random
 import numpy as np
 import torch
+from zmq import device
 import utils
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -162,6 +163,8 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
                 return self.load_image_mask(img_idx)
             elif self.return_type == 'image_depth_id':
                 return self.load_image_depth(img_idx)
+            elif self.return_type == 'image_mask_focalstack_id':
+                return self.load_image_mask_focalstack(img_idx)
         else:
             raise StopIteration
 
@@ -191,7 +194,7 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
 
         return (torch.from_numpy(im).float(),
                 None,
-                os.path.split(path)[1].split('_')[-1])
+                os.path.join(*path.split(os.sep)[-6:])) # get the path after flying3d folder. e.g. frames_cleanpass/TRAIN/C/0212/left/0007
         
     def depth_convert(self, depth):
         # NaN to inf
@@ -233,7 +236,19 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
 
         return (depth.float(),
                 None,
-                os.path.split(path)[1].split('_')[-1])
+                os.path.join(*path.split(os.sep)[-6:])) # get the path after flying3d folder. e.g. disparity/TRAIN/C/0212/left/0007
+    
+    def load_focalstack(self, filenum):
+        
+        focalstack_root = '/media/datadrive/focal-stack/flying3D'
+        img_path = os.path.join(*os.path.splitext(self.im_names[filenum])[0].split(os.sep)[-6:])
+        focalstack_path = os.path.join(focalstack_root, img_path, 'focalstack.pth')
+        focalstack = torch.load(focalstack_path).squeeze()
+        
+        focalstack = resize_keep_aspect(focalstack, self.roi_res, pytorch=True)
+        focalstack = pad_crop_to_res(focalstack, self.image_res, pytorch=True)
+
+        return focalstack
 
     def load_image_mask(self, filenum):
         img_none_idx = self.load_image(filenum)
@@ -245,16 +260,34 @@ class FlyingThings3D_loader(torch.utils.data.IterableDataset):
         img_none_idx = self.load_image(filenum)
         depth_none_idx = self.load_depth(filenum)
         return (img_none_idx[0], depth_none_idx[0], img_none_idx[-1])
+    
+    def load_image_mask_focalstack(self, filenum):
+        img_none_idx = self.load_image(filenum)
+        depth_none_idx = self.load_depth(filenum)
+        mask = utils.decompose_depthmap(depth_none_idx[0], self.virtual_depth_planes)
+        focalstack = self.load_focalstack(filenum)
+        return (img_none_idx[0], mask, focalstack, img_none_idx[-1])
 
 
 if __name__ == '__main__':
     virtual_depth_planes = [0.0, 0.08417508417508479, 0.14124293785310726, 0.24299599771297942, 0.3171856978085348, 0.4155730533683304, 0.5319148936170226, 0.6112104949314254]
-    img_loader = FlyingThings3D_loader('/media/datadrive/flying3D',
-                                        channel=1,  
-                                        virtual_depth_planes=virtual_depth_planes,
-                                        return_type='image_mask_id',
-                                        slice=(0,0.8)
-                                        )
+    data_path = '/media/datadrive/flying3D'
+    image_res = (540, 960)
+    roi_res = (480, 840)
+    random_seed = 10
+    device = torch.device('cuda:0')
     
-    print(len(img_loader))
-    pass
+    train_loader = FlyingThings3D_loader(data_path=data_path,
+                                         channel=1, image_res=image_res, roi_res=roi_res,
+                                         virtual_depth_planes=virtual_depth_planes,
+                                         return_type='image_mask_focalstack_id',
+                                         random_seed=random_seed,
+                                         # slice=(0,0.025),
+                                         # slice=(0,0.1),
+                                         slice=(0,0.025),
+                                         )
+    
+    for image, mask, focalstack, path in train_loader:
+        image = image.to(device)
+        mask = mask.to(device)
+        focalstack = focalstack.to(device)
