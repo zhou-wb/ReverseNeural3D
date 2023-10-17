@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from unet import UnetGenerator, init_weights
 import utils
-from torchsummary import summary
+
 import prop_ideal
 from algorithm import DPAC
 from propagation_ASM import propagation_ASM
@@ -189,6 +189,7 @@ class InversePropagation(nn.Module):
 
 
 if __name__ == '__main__':
+    from torchsummary import summary
     reverse_prop = UNetProp((540,960), input_nc=8, output_nc=1, num_downs=8)
     reverse_prop = reverse_prop.cuda()
     summary(reverse_prop, (8, 540, 960))

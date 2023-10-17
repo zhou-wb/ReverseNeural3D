@@ -15,9 +15,9 @@ from load_flying3d import FlyingThings3D_loader
 
 
 
-#####################
-# Optics Parameters #
-#####################
+########################
+# 1. Optics Parameters #
+########################
 
 # distance between the reference(middle) plane and slm
 prop_dist = 0.0044
@@ -36,22 +36,22 @@ F_aperture = 0.5
 
 
 
-#######################
-# Training Parameters #
-#######################
+##########################
+# 2. Training Parameters #
+##########################
 
 device = torch.device('cuda:0')
 loss_fn = nn.MSELoss().to(device)
 learning_rate = 1e-4
 max_epoch = 100000
 
-loss_type_list = ['in-focus-loss', 'all-image-loss']
+loss_type_list = ['in-focus-loss', 'focal-stack-loss']
 loss_id = 0
 loss_type_config = loss_type_list[loss_id]
 
 if loss_type_config == 'in-focus-loss':
     return_type = 'image_mask_id'
-elif loss_type_config == 'all-image-loss':
+elif loss_type_config == 'focal-stack-loss':
     return_type = 'image_mask_focalstack_id'
 # If there are nan in output, consider enable this to debug
 # torch.autograd.set_detect_anomaly(True)
@@ -59,47 +59,32 @@ elif loss_type_config == 'all-image-loss':
 
 
 
-######################
-# Dataset Parameters #
-######################
+#########################
+# 3. Dataset Parameters #
+#########################
 
 batch_size = 1
 dataset_list = ['Hypersim', 'FlyingThings3D', 'MitCGH']
 dataset_id = 1
 dataset_name = dataset_list[dataset_id]
-loss_on_roi = True
-resize_to_1080p = True
-for_uformer = False
+# loss_on_roi = True
+# resize_to_1080p = False
+# for_uformer = True
+image_res = (512, 512)
+roi_res = (448, 448)
+
 random_seed = 10 #random_seed = None for not shuffle
 
 if dataset_name == 'Hypersim':
     ############################# use Hypersim Dataset ##########################################
     # Load training set and validation set seperatly.
     # Set the slice parameter accordingly to get desired size of train/val sets
-    # Original Resolution: (768, 1024)
+    # Original Resolution: (768, 1024), recommand roi: (680, 900)
     dir_list = ['ai_001_001','ai_004_001','ai_007_001','ai_010_001','ai_013_001','ai_019_001','ai_041_001','ai_050_001',
                 'ai_002_001','ai_005_001','ai_008_001','ai_011_001','ai_014_003','ai_017_001','ai_021_001',
                 'ai_003_001','ai_006_001','ai_009_001','ai_012_001','ai_015_001','ai_018_001','ai_030_001']
     data_path = ['/media/datadrive/hypersim/'+ folder + '/images' for folder in dir_list]
     # data_path = '/media/datadrive/hypersim/ai_001_001/images'
-
-    if resize_to_1080p:
-        image_res = (1080, 1920)
-        if loss_on_roi:
-            roi_res = (960, 1680)
-        else:
-            roi_res = (1080, 1920)
-    else:
-        image_res = (768, 1024)
-        if loss_on_roi:
-            roi_res = (680, 900)
-        else:
-            roi_res = (768, 1024)
-    if for_uformer:
-        # image_res = (512, 512)
-        # roi_res = (448, 448)
-        image_res = (256, 256)
-        roi_res = (224, 224)
     
     train_loader = hypersim_TargetLoader(data_path=data_path, 
                                         channel=1, image_res=image_res, roi_res=roi_res,
@@ -122,24 +107,25 @@ elif dataset_name == 'FlyingThings3D':
     # Load training set and validation set seperatly.
     # Set the slice parameter accordingly to get desired size of train/val sets
     # Original Resolution: (540, 960)
-    data_path = '/media/datadrive/flying3D'
-    if resize_to_1080p:
-        image_res = (1080, 1920)
-        if loss_on_roi:
-            roi_res = (960, 1680)
-        else:
-            roi_res = (1080, 1920)
-    else:
-        image_res = (540, 960)
-        if loss_on_roi:
-            roi_res = (480, 840)
-        else:
-            roi_res = (540, 960)
-    if for_uformer:
-        # image_res = (512, 512)
-        # roi_res = (448, 448)
-        image_res = (256, 256)
-        roi_res = (224, 224)
+    # data_path = '/media/datadrive/flying3D'
+    data_path = 'D:\\data\\flying3D'
+    # if resize_to_1080p:
+    #     image_res = (1080, 1920)
+    #     if loss_on_roi:
+    #         roi_res = (960, 1680)
+    #     else:
+    #         roi_res = (1080, 1920)
+    # else:
+    #     image_res = (540, 960)
+    #     if loss_on_roi:
+    #         roi_res = (480, 840)
+    #     else:
+    #         roi_res = (540, 960)
+    # if for_uformer:
+    #     image_res = (512, 512)
+    #     roi_res = (448, 448)
+        # image_res = (256, 256)
+        # roi_res = (224, 224)
 
     train_loader = FlyingThings3D_loader(data_path=data_path,
                                          channel=1, image_res=image_res, roi_res=roi_res,
@@ -173,13 +159,13 @@ val_dataloader = DataLoader(val_loader, batch_size=batch_size)
 
 
 
-####################################
-# Load Networks -- Inverse Network #
-####################################
+#######################################
+# 4. Load Networks -- Inverse Network #
+#######################################
 
 # choose the network structure by set the config_id to 0,1,2
 inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only']
-network_id = 2
+network_id = 3
 inverse_network_config = inverse_network_list[network_id]
 
 inverse_prop = InversePropagation(inverse_network_config, prop_dists_from_wrp=prop_dists_from_wrp, prop_dist=prop_dist,
@@ -190,31 +176,31 @@ inverse_prop = inverse_prop.to(device)
 optimizer = torch.optim.Adam(inverse_prop.parameters(), lr=learning_rate)
 
 
-####################################
-# Load Networks -- Forward Network #
-####################################
+#######################################
+# 5. Load Networks -- Forward Network #
+#######################################
 
 forward_prop_list = ['ASM', 'CNNpropCNN']
-forward_prop_id = 0
+forward_prop_id = 1
 forward_prop_config = forward_prop_list[forward_prop_id]
 
-#################### use CNNpropCNN as Forward Network ############################
-# forward_network_config = 'CNNpropCNN'
-# if resize_to_1080p == False:
-#     raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model')
-# forward_prop = CNNpropCNN_default()
-# forward_prop = forward_prop.to(device)
-# for param in forward_prop.parameters():
-#     param.requires_grad = False
-###################################################################################
+if forward_prop_config == 'ASM':
+    ######################## use ASM as Forward Network ###############################
+    forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
+                                        'ASM', F_aperture, prop_dists_from_wrp,
+                                        dim=1)
+    forward_prop = forward_prop.to(device)
+    ###################################################################################
 
-######################## use ASM as Forward Network ###############################
-forward_network_config = 'ASM'
-forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
-                                     'ASM', F_aperture, prop_dists_from_wrp,
-                                     dim=1)
-forward_prop = forward_prop.to(device)
-###################################################################################
+elif forward_prop_config == 'CNNpropCNN':
+    #################### use CNNpropCNN as Forward Network ############################
+    forward_prop = CNNpropCNN_default(image_res, roi_res)
+    if forward_prop == None:
+        raise ValueError('CNNpropCNN only support image resolution 1080*1920/512*512 and roi 960*1680/448*448')
+    forward_prop = forward_prop.to(device)
+    for param in forward_prop.parameters():
+        param.requires_grad = False
+    ###################################################################################
 
 
 
@@ -232,12 +218,12 @@ best_test_psnr = 0
 # init tensorboard
 time_str = str(datetime.now()).replace(' ', '-').replace(':', '-')
 run_id = dataset_name + '-' + inverse_network_config + '-' + \
-    str(learning_rate) + '-' + forward_network_config + '-' + \
+    str(learning_rate) + '-' + forward_prop_config + '-' + \
     f'{image_res[0]}_{image_res[1]}-{roi_res[0]}_{roi_res[1]}' + '-' + \
     f'{len(plane_idx)}_target_planes' + '-' + loss_type_config
 print('Dataset:', dataset_name)
 print('Inverse Network:', inverse_network_config)
-print('Forward Prop:', forward_network_config)
+print('Forward Prop:', forward_prop_config)
 print('Learning Rate:', learning_rate)
 print('Image Resolution:', image_res)
 print('ROI Resolution:', roi_res)
@@ -268,7 +254,7 @@ for i in range(max_epoch):
         
         if loss_type_config == 'in-focus-loss':
             imgs, masks, imgs_id = imgs_masks_id
-        elif loss_type_config == 'all-image-loss':
+        elif loss_type_config == 'focal-stack-loss':
             imgs, masks, focalstack, imgs_id = imgs_masks_id
             focalstack = focalstack.to(device)
 
@@ -299,7 +285,7 @@ for i in range(max_epoch):
                 average_scale_factor += s
             loss = loss_fn(s * final_amp, masked_imgs)
         
-        elif loss_type_config == 'all-image-loss':
+        elif loss_type_config == 'focal-stack-loss':
             focalstack = utils.crop_image(focalstack, roi_res, stacked_complex=False)
         
             with torch.no_grad():
@@ -364,7 +350,7 @@ for i in range(max_epoch):
         for imgs_masks_id in val_dataloader: 
             if loss_type_config == 'in-focus-loss':
                 imgs, masks, imgs_id = imgs_masks_id
-            elif loss_type_config == 'all-image-loss':
+            elif loss_type_config == 'focal-stack-loss':
                 imgs, masks, focalstack, imgs_id = imgs_masks_id
                 focalstack = focalstack.to(device)
 
@@ -390,7 +376,7 @@ for i in range(max_epoch):
                 
                 loss = loss_fn(average_scale_factor * final_amp, masked_imgs)
             
-            elif loss_type_config == 'all-image-loss':
+            elif loss_type_config == 'focal-stack-loss':
                 focalstack = utils.crop_image(focalstack, roi_res, stacked_complex=False)
             
                 loss = loss_fn(average_scale_factor * outputs_amp, focalstack)
