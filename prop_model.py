@@ -25,10 +25,21 @@ opt.channel = 1
 opt.prop_model="cnnpropcnn"
 opt.target="rgbd"
 # opt.prop_model_path = "CNNpropCNN_model/05-1454__green-slm8-32-512_tg5-8-128_rectrect_l1_7pls_bs1/model-epoch=332-PSNR_validation_epoch=38.90.ckpt"
-opt.prop_model_path = 'CNNpropCNN_model/16-2317__green-slm8-32-512_tg5-8-128_rectrect_l1_4pls_bs1/model-epoch=197-PSNR_validation_epoch=40.01.ckpt'
+# opt.prop_model_path = 'CNNpropCNN_model/16-2317__green-slm8-32-512_tg5-8-128_rectrect_l1_4pls_bs1/model-epoch=197-PSNR_validation_epoch=40.01.ckpt' # 1920*1080 ROI 1680*960
+# opt.prop_model_path = 'CNNpropCNN_model\green-512-448\model-epoch=68-PSNR_validation_epoch=37.59.ckpt'   # 512*512, ROI 448*448
 params.set_configs(opt)
 
-def CNNpropCNN_default():
+def CNNpropCNN_default(image_res, roi_res):
+    if image_res==(1080, 1920) and roi_res==(960,1680):
+        opt.prop_model_path = 'CNNpropCNN_model/16-2317__green-slm8-32-512_tg5-8-128_rectrect_l1_4pls_bs1/model-epoch=197-PSNR_validation_epoch=40.01.ckpt' # 1920*1080 ROI 1680*960
+    elif image_res==(512, 512) and roi_res==(448, 448):
+        opt.prop_model_path = 'CNNpropCNN_model\green-512-448\model-epoch=68-PSNR_validation_epoch=37.59.ckpt'   # 512*512, ROI 448*448
+    else:
+        return None
+    
+    opt.slm_res = image_res
+    opt.image_res = image_res
+    opt.roi_res = roi_res
     return model(opt)
 
 def model(opt, dev=torch.device('cuda'), preload_H=False):

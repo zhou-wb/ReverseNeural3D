@@ -1,57 +1,82 @@
-import torch, os, random, utils, time
-from torch import nn
+import torch, os, random, utils, configargparse
+import numpy as np
+from torch import nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
 # propagation network related 
 from inverse3d_prop import InversePropagation
-from prop_model import CNNpropCNN_default
 import prop_ideal
 
 # dataset related
 from load_hypersim import hypersim_TargetLoader
 from load_flying3d import FlyingThings3D_loader
 
+from custom_loss import MSETVLoss
 
 
-#####################
-# Optics Parameters #
-#####################
 
+# p = configargparse.ArgParser()
+# p.add('-c', '--my-config', required=False, is_config_file=True, help='config file path')
+# p.add('--genome', required=True, help='path to genome file')
+
+# resume = False
+
+# if resume:
+
+
+
+########################
+# 1. Optics Parameters #
+########################
+
+cm, mm, um, nm = 1e-2, 1e-3, 1e-6, 1e-9
 # distance between the reference(middle) plane and slm
-prop_dist = 0.0044
+# prop_dist = 0.0044
+prop_dist = 60.0*mm  #4.4*mm
 # distance between the reference(middle) plane and all the 8 target planes 
-prop_dists_from_wrp = [-0.0044, -0.0032000000000000006, -0.0024000000000000002, -0.0010000000000000005, 0.0, 0.0013, 0.0028000000000000004, 0.0037999999999999987]
+prop_dists_from_wrp = [-4.4*mm, -3.2*mm, -2.4*mm, -1.0*mm, 0.0*mm, 1.3*mm, 2.8*mm, 3.8*mm]
 # depth in diopter space (m^-1) to compute the masks for rgbd input
 virtual_depth_planes = [0.0, 0.08417508417508479, 0.14124293785310726, 0.24299599771297942, 0.3171856978085348, 0.4155730533683304, 0.5319148936170226, 0.6112104949314254]
 # specify how many target planes used to compute loss here
-plane_idx = [0, 1, 2, 3, 4, 5, 6, 7]
-# plane_idx = [4]
+# plane_idx = [0, 1, 2, 3, 4, 5, 6, 7]
+plane_idx = [4]
 prop_dists_from_wrp = [prop_dists_from_wrp[idx] for idx in plane_idx]
 virtual_depth_planes = [virtual_depth_planes[idx] for idx in plane_idx]
-wavelength = 5.177e-07
-feature_size = (6.4e-06, 6.4e-06)
+wavelength = 5.230e-07 # 5.177e-07
+feature_size = (8.0e-06, 8.0e-06) # (6.4e-06, 6.4e-06)
 F_aperture = 0.5
 
 
 
-#######################
-# Training Parameters #
-#######################
+##########################
+# 2. Training Parameters #
+##########################
 
 device = torch.device('cuda:0')
-loss_fn = nn.MSELoss().to(device)
+
+loss_list = ['MSE', 'MSE_TV']
+loss_id = 0
+loss_name = loss_list[loss_id]
+
+if loss_name == 'MSE':
+    loss_fn = nn.MSELoss().to(device)
+elif loss_name == 'MSE_TV':
+    loss_fn = MSETVLoss().to(device)
+else:
+    raise ValueError(f"Loss: '{loss_name}' Not Implement!")
+
 learning_rate = 1e-4
 max_epoch = 100000
 
-loss_type_list = ['in-focus-loss', 'all-image-loss']
+loss_type_list = ['in-focus-loss', 'focal-stack-loss']
 loss_id = 0
 loss_type_config = loss_type_list[loss_id]
 
 if loss_type_config == 'in-focus-loss':
     return_type = 'image_mask_id'
-elif loss_type_config == 'all-image-loss':
+elif loss_type_config == 'focal-stack-loss':
     return_type = 'image_mask_focalstack_id'
 # If there are nan in output, consider enable this to debug
 # torch.autograd.set_detect_anomaly(True)
@@ -59,47 +84,38 @@ elif loss_type_config == 'all-image-loss':
 
 
 
-######################
-# Dataset Parameters #
-######################
+#########################
+# 3. Dataset Parameters #
+#########################
 
 batch_size = 1
 dataset_list = ['Hypersim', 'FlyingThings3D', 'MitCGH']
 dataset_id = 1
 dataset_name = dataset_list[dataset_id]
-loss_on_roi = True
-resize_to_1080p = True
-for_uformer = False
+# loss_on_roi = True
+# resize_to_1080p = False
+# for_uformer = True
+# image_res = (1080, 1920)
+# roi_res = (880, 1600)
+image_res = (490, 490)
+roi_res = (428, 428)
+# image_res = (540, 960)
+# roi_res = (440, 800)
+# image_res = (512, 512)
+# roi_res = (448, 448)
+
 random_seed = 10 #random_seed = None for not shuffle
 
 if dataset_name == 'Hypersim':
     ############################# use Hypersim Dataset ##########################################
     # Load training set and validation set seperatly.
     # Set the slice parameter accordingly to get desired size of train/val sets
-    # Original Resolution: (768, 1024)
+    # Original Resolution: (768, 1024), recommand roi: (680, 900)
     dir_list = ['ai_001_001','ai_004_001','ai_007_001','ai_010_001','ai_013_001','ai_019_001','ai_041_001','ai_050_001',
                 'ai_002_001','ai_005_001','ai_008_001','ai_011_001','ai_014_003','ai_017_001','ai_021_001',
                 'ai_003_001','ai_006_001','ai_009_001','ai_012_001','ai_015_001','ai_018_001','ai_030_001']
     data_path = ['/media/datadrive/hypersim/'+ folder + '/images' for folder in dir_list]
     # data_path = '/media/datadrive/hypersim/ai_001_001/images'
-
-    if resize_to_1080p:
-        image_res = (1080, 1920)
-        if loss_on_roi:
-            roi_res = (960, 1680)
-        else:
-            roi_res = (1080, 1920)
-    else:
-        image_res = (768, 1024)
-        if loss_on_roi:
-            roi_res = (680, 900)
-        else:
-            roi_res = (768, 1024)
-    if for_uformer:
-        # image_res = (512, 512)
-        # roi_res = (448, 448)
-        image_res = (256, 256)
-        roi_res = (224, 224)
     
     train_loader = hypersim_TargetLoader(data_path=data_path, 
                                         channel=1, image_res=image_res, roi_res=roi_res,
@@ -122,24 +138,25 @@ elif dataset_name == 'FlyingThings3D':
     # Load training set and validation set seperatly.
     # Set the slice parameter accordingly to get desired size of train/val sets
     # Original Resolution: (540, 960)
-    data_path = '/media/datadrive/flying3D'
-    if resize_to_1080p:
-        image_res = (1080, 1920)
-        if loss_on_roi:
-            roi_res = (960, 1680)
-        else:
-            roi_res = (1080, 1920)
-    else:
-        image_res = (540, 960)
-        if loss_on_roi:
-            roi_res = (480, 840)
-        else:
-            roi_res = (540, 960)
-    if for_uformer:
-        # image_res = (512, 512)
-        # roi_res = (448, 448)
-        image_res = (256, 256)
-        roi_res = (224, 224)
+    # data_path = '/media/datadrive/flying3D'
+    data_path = 'C:\\data\\flying3D'
+    # if resize_to_1080p:
+    #     image_res = (1080, 1920)
+    #     if loss_on_roi:
+    #         roi_res = (960, 1680)
+    #     else:
+    #         roi_res = (1080, 1920)
+    # else:
+    #     image_res = (540, 960)
+    #     if loss_on_roi:
+    #         roi_res = (480, 840)
+    #     else:
+    #         roi_res = (540, 960)
+    # if for_uformer:
+    #     image_res = (512, 512)
+    #     roi_res = (448, 448)
+        # image_res = (256, 256)
+        # roi_res = (224, 224)
 
     train_loader = FlyingThings3D_loader(data_path=data_path,
                                          channel=1, image_res=image_res, roi_res=roi_res,
@@ -173,12 +190,12 @@ val_dataloader = DataLoader(val_loader, batch_size=batch_size)
 
 
 
-####################################
-# Load Networks -- Inverse Network #
-####################################
+#######################################
+# 4. Load Networks -- Inverse Network # 
+#######################################
 
 # choose the network structure by set the config_id to 0,1,2
-inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'vit_only']
+inverse_network_list = ['cnn_only', 'cnn_asm_dpac', 'cnn_asm_cnn', 'cnn_asm_cnn_complex', 'vit_only']
 network_id = 2
 inverse_network_config = inverse_network_list[network_id]
 
@@ -190,31 +207,32 @@ inverse_prop = inverse_prop.to(device)
 optimizer = torch.optim.Adam(inverse_prop.parameters(), lr=learning_rate)
 
 
-####################################
-# Load Networks -- Forward Network #
-####################################
+#######################################
+# 5. Load Networks -- Forward Network #
+#######################################
 
 forward_prop_list = ['ASM', 'CNNpropCNN']
 forward_prop_id = 0
 forward_prop_config = forward_prop_list[forward_prop_id]
 
-#################### use CNNpropCNN as Forward Network ############################
-# forward_network_config = 'CNNpropCNN'
-# if resize_to_1080p == False:
-#     raise ValueError('You MUST set resize_to_1080p to True to use CNNpropCNN as forward propagation model')
-# forward_prop = CNNpropCNN_default()
-# forward_prop = forward_prop.to(device)
-# for param in forward_prop.parameters():
-#     param.requires_grad = False
-###################################################################################
+if forward_prop_config == 'ASM':
+    ######################## use ASM as Forward Network ###############################
+    forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
+                                        'ASM', F_aperture, prop_dists_from_wrp,
+                                        dim=1)
+    forward_prop = forward_prop.to(device)
+    ###################################################################################
 
-######################## use ASM as Forward Network ###############################
-forward_network_config = 'ASM'
-forward_prop = prop_ideal.SerialProp(prop_dist, wavelength, feature_size,
-                                     'ASM', F_aperture, prop_dists_from_wrp,
-                                     dim=1)
-forward_prop = forward_prop.to(device)
-###################################################################################
+elif forward_prop_config == 'CNNpropCNN':
+    #################### use CNNpropCNN as Forward Network ############################
+    from prop_model import CNNpropCNN_default
+    forward_prop = CNNpropCNN_default(image_res, roi_res)
+    if forward_prop == None:
+        raise ValueError('CNNpropCNN only support image resolution 1080*1920/512*512 and roi 960*1680/448*448')
+    forward_prop = forward_prop.to(device)
+    for param in forward_prop.parameters():
+        param.requires_grad = False
+    ###################################################################################
 
 
 
@@ -227,23 +245,28 @@ forward_prop = forward_prop.to(device)
 
 total_train_step = 0
 best_val_loss = float('inf')
-best_test_psnr = 0
+best_val_psnr = 0
 
 # init tensorboard
 time_str = str(datetime.now()).replace(' ', '-').replace(':', '-')
 run_id = dataset_name + '-' + inverse_network_config + '-' + \
-    str(learning_rate) + '-' + forward_network_config + '-' + \
+    str(learning_rate) + '-' + forward_prop_config + '-' + \
     f'{image_res[0]}_{image_res[1]}-{roi_res[0]}_{roi_res[1]}' + '-' + \
-    f'{len(plane_idx)}_target_planes' + '-' + loss_type_config
+    f'{len(plane_idx)}_target_planes' + '-' + loss_type_config + '-' + str(feature_size[0]) + '-' + str(prop_dist) + '-' + loss_name
+# run_id = 'debug'
 print('Dataset:', dataset_name)
 print('Inverse Network:', inverse_network_config)
-print('Forward Prop:', forward_network_config)
+print('Forward Prop:', forward_prop_config)
+print('Loss function:', loss_name)
 print('Learning Rate:', learning_rate)
 print('Image Resolution:', image_res)
 print('ROI Resolution:', roi_res)
 print('Batch Size:', batch_size)
 print('Number of Target Planes:', len(plane_idx))
 print('Loss Type:', loss_type_config)
+print('Propagation distance:', prop_dist)
+print('Feature size:', feature_size)
+print('Wave length: ', wavelength)
 print('The Network will be Trained on:', torch.cuda.get_device_name(device))
 input("Press Enter to continue...")
 run_folder_name = time_str + '-' + run_id
@@ -268,7 +291,7 @@ for i in range(max_epoch):
         
         if loss_type_config == 'in-focus-loss':
             imgs, masks, imgs_id = imgs_masks_id
-        elif loss_type_config == 'all-image-loss':
+        elif loss_type_config == 'focal-stack-loss':
             imgs, masks, focalstack, imgs_id = imgs_masks_id
             focalstack = focalstack.to(device)
 
@@ -277,7 +300,7 @@ for i in range(max_epoch):
         masked_imgs = imgs * masks
 
         # inverse propagation
-        slm_phase = inverse_prop(masked_imgs)
+        slm_amp, slm_phase = inverse_prop(masked_imgs)
         # forward propagation
         outputs_field = forward_prop(slm_phase)
         outputs_amp = outputs_field.abs()
@@ -297,9 +320,13 @@ for i in range(max_epoch):
                 #     (final_amp ** 2).mean()  # scale minimizing MSE btw recon and target
                 s = 1
                 average_scale_factor += s
-            loss = loss_fn(s * final_amp, masked_imgs)
+            if loss_name == 'MSE':
+                loss = loss_fn(s * final_amp, masked_imgs)
+            elif loss_name == 'MSE_TV':
+                mapped_slm_phase = ((1 - slm_phase) % (2 * np.pi)) / (2 * np.pi)
+                loss = loss_fn(s * final_amp, masked_imgs, mapped_slm_phase)
         
-        elif loss_type_config == 'all-image-loss':
+        elif loss_type_config == 'focal-stack-loss':
             focalstack = utils.crop_image(focalstack, roi_res, stacked_complex=False)
         
             with torch.no_grad():
@@ -332,10 +359,13 @@ for i in range(max_epoch):
             print(f"Training Step {total_train_step}, Loss: {loss.item()}")
             
             if (total_train_step) % 1000 == 0:
-                # mapped_slm_phase = ((slm_phase + np.pi) % (2 * np.pi)) / (2 * np.pi)
+                # mapped_slm_phase = ((1-slm_phase) % (2 * np.pi)) / (2 * np.pi)
                 mapped_slm_phase = ((slm_phase - slm_phase.min()) / (slm_phase.max() - slm_phase.min()))
+                mapped_slm_amp = ((slm_amp - slm_amp.min()) / (slm_amp.max() - slm_amp.min()))
                 writer.add_text('image id', imgs_id[0], total_train_step)
-                writer.add_image(f'phase', mapped_slm_phase[0,0], total_train_step, dataformats='HW')
+                # writer.add_image(f'phase', mapped_slm_phase[0,0], total_train_step, dataformats='HW')
+                writer.add_image(f'slm_amp', mapped_slm_amp[0,0], total_train_step, dataformats='HW')
+                writer.add_image(f'slm_phase', mapped_slm_phase[0,0], total_train_step, dataformats='HW')
                 for i in range(len(plane_idx)):
                     writer.add_image(f'input_images_plane{i}', masked_imgs[0,i], total_train_step, dataformats='HW')
                     writer.add_images(f'output_image_plane{i}', outputs_amp[0,i], total_train_step, dataformats='HW')
@@ -364,7 +394,7 @@ for i in range(max_epoch):
         for imgs_masks_id in val_dataloader: 
             if loss_type_config == 'in-focus-loss':
                 imgs, masks, imgs_id = imgs_masks_id
-            elif loss_type_config == 'all-image-loss':
+            elif loss_type_config == 'focal-stack-loss':
                 imgs, masks, focalstack, imgs_id = imgs_masks_id
                 focalstack = focalstack.to(device)
 
@@ -373,7 +403,7 @@ for i in range(max_epoch):
             masked_imgs = imgs * masks
             
             # inverse propagation
-            slm_phase = inverse_prop(masked_imgs)
+            slm_amp, slm_phase = inverse_prop(masked_imgs)
             # forward propagation
             outputs_field = forward_prop(slm_phase)
             outputs_amp = outputs_field.abs()
@@ -388,9 +418,14 @@ for i in range(max_epoch):
                 final_amp[nonzeros] += (outputs_amp[nonzeros] * masks[nonzeros])
                 masked_imgs = utils.crop_image(masked_imgs, roi_res, stacked_complex=False)
                 
-                loss = loss_fn(average_scale_factor * final_amp, masked_imgs)
+                # loss = loss_fn(average_scale_factor * final_amp, masked_imgs, slm_phase % (2*np.pi))
+                if loss_name == 'MSE':
+                    loss = loss_fn(s * final_amp, masked_imgs)
+                elif loss_name == 'MSE_TV':
+                    mapped_slm_phase = ((1 - slm_phase) % (2 * np.pi)) / (2 * np.pi)
+                    loss = loss_fn(s * final_amp, masked_imgs, mapped_slm_phase)
             
-            elif loss_type_config == 'all-image-loss':
+            elif loss_type_config == 'focal-stack-loss':
                 focalstack = utils.crop_image(focalstack, roi_res, stacked_complex=False)
             
                 loss = loss_fn(average_scale_factor * outputs_amp, focalstack)
@@ -400,10 +435,13 @@ for i in range(max_epoch):
                 psnr = utils.calculate_psnr(utils.target_planes_to_one_image(average_scale_factor * outputs_amp, masks), imgs[:,0])
             
             if val_items_count == record_id:
-                # mapped_slm_phase = ((slm_phase + np.pi) % (2 * np.pi)) / (2 * np.pi)
+                # mapped_slm_phase = ((1 - slm_phase) % (2 * np.pi)) / (2 * np.pi)
                 mapped_slm_phase = ((slm_phase - slm_phase.min()) / (slm_phase.max() - slm_phase.min()))
+                mapped_slm_amp = ((slm_amp - slm_amp.min()) / (slm_amp.max() - slm_amp.min()))
                 writer.add_text('val_image id', imgs_id[0], total_train_step)
-                writer.add_image(f'val_phase', mapped_slm_phase[0,0], total_train_step, dataformats='HW')
+                # writer.add_image(f'val_phase', mapped_slm_phase[0,0], total_train_step, dataformats='HW')
+                writer.add_image(f'val_slm_amp', mapped_slm_amp[0,0], total_train_step, dataformats='HW')
+                writer.add_image(f'val_slm_phase', mapped_slm_phase[0,0], total_train_step, dataformats='HW')
                 for i in range(len(plane_idx)):
                     writer.add_image(f'val_input_images_plane{i}', masked_imgs[0,i], total_train_step, dataformats='HW')
                     writer.add_images(f'val_output_image_plane{i}', outputs_amp[0,i], total_train_step, dataformats='HW')
@@ -417,6 +455,8 @@ for i in range(max_epoch):
         
         average_val_loss = total_val_loss/val_items_count
         average_val_psnr = total_val_psnr/val_items_count
+
+        # save the best model in terms of validation loss
         if best_val_loss > average_val_loss:
             best_val_loss = average_val_loss
             # save model
@@ -424,8 +464,36 @@ for i in range(max_epoch):
             if not os.path.exists(path):
                 os.makedirs(path) 
             torch.save(inverse_prop, f"{path}/{run_id}_best_loss.pth")
-            writer.add_scalar("best_scale_factor", average_scale_factor, total_train_step)
-            print("model saved!")
+            writer.add_scalar("best_loss_scale_factor", average_scale_factor, total_train_step)
+            print("best loss model updated!")
+        
+        # save the best model in terms of validation PSNR
+        if best_val_psnr < average_val_psnr:
+            best_val_psnr = average_val_psnr
+            # save model
+            path = f"runs/{run_folder_name}/model/"
+            if not os.path.exists(path):
+                os.makedirs(path) 
+            torch.save(inverse_prop, f"{path}/{run_id}_best_psnr.pth")
+            writer.add_scalar("best_psnr_scale_factor", average_scale_factor, total_train_step)
+            print("best psnr model updated!")
+
+        if i > 0 and i % 10 == 0:
+            # save model
+            path = f"runs/{run_folder_name}/model/"
+            if not os.path.exists(path):
+                os.makedirs(path) 
+            torch.save(inverse_prop, f"{path}/{run_id}_epoch_{i}.pth")
+            print("model saved for after epoch {i}!")
+        
+        
+        # save the checkpoint to resume training
+        path = f"runs/{run_folder_name}/model/"
+        torch.save({'epoch': i,
+                    'model_state_dict': inverse_prop.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    # 'loss': average_train_loss,
+                    }, f"{path}/{run_id}_last_epoch.pth")
             
     print(f"Average Val Loss: {average_val_loss}")
     print(f"Average Val PSNR: {average_val_psnr}")

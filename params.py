@@ -235,6 +235,7 @@ def slm_config(slm_type, opt):
     if slm_type.lower() in ('leto'):
         opt.feature_size = (6.4 * um, 6.4 * um)  # SLM pitch
         opt.slm_res = (1080, 1920)  # resolution of SLM
+        # opt.slm_res = (512, 512)
         opt.image_res = opt.slm_res
     elif slm_type.lower() in ('pluto'):
         opt.feature_size = (8.0 * um, 8.0 * um)  # SLM pitch
@@ -271,6 +272,7 @@ def optics_config(setup_type, opt):
         opt.prop_dists_physical = opt.prop_dists_rgb[1]
         opt.F_aperture = 0.5
         opt.roi_res = (960, 1680)  # regions of interest (to penalize for SGD)
+        # opt.roi_res = (448, 448)
         opt.training_plane_idxs = [0, 1, 3, 4, 5, 6, 7]
         opt.heldout_plane_idxs = [2]
         #######################################

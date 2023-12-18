@@ -4,6 +4,7 @@ Utils
 
 import math
 import random
+from cv2 import add
 import numpy as np
 
 import os
@@ -159,7 +160,7 @@ def cond_mkdir(path):
         os.makedirs(path)
 
 
-def phasemap_8bit(phasemap, inverted=True):
+def phasemap_8bit(phasemap, inverted=True, add_pi=False, shift=0.0):
     """convert a phasemap tensor into a numpy 8bit phasemap that can be directly displayed
 
     Input
@@ -171,12 +172,16 @@ def phasemap_8bit(phasemap, inverted=True):
     ------
     :return: output phasemap, with uint8 dtype (in [0, 255])
     """
-
-    output_phase = ((phasemap + np.pi) % (2 * np.pi)) / (2 * np.pi)
-    if inverted:
-        phase_out_8bit = ((1 - output_phase) * 255).round().cpu().detach().squeeze().numpy().astype(np.uint8)  # quantized to 8 bits
+    
+    if add_pi:
+        output_phase = ((phasemap + np.pi) % (2 * np.pi)) / (2 * np.pi)
     else:
-        phase_out_8bit = ((output_phase) * 255).round().cpu().detach().squeeze().numpy().astype(np.uint8)  # quantized to 8 bits
+        output_phase = ((phasemap) % (2 * np.pi)) / (2 * np.pi)
+
+    if inverted:
+        phase_out_8bit = (((1 - output_phase) + shift/(2 * np.pi)) * 255).round().cpu().detach().squeeze().numpy().astype(np.uint8)  # quantized to 8 bits
+    else:
+        phase_out_8bit = ((output_phase + shift/(2*np.pi)) * 255).round().cpu().detach().squeeze().numpy().astype(np.uint8)  # quantized to 8 bits
     return phase_out_8bit
 
 
