@@ -5,3 +5,5 @@ runs/
 slm_phase/
 CNNpropCNN_model/
 draft.py
+inverse_model/
+phase/
