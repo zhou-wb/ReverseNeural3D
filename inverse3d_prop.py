@@ -29,7 +29,7 @@ class UNetProp(nn.Module):
                          nf0=num_feats_min, num_down=num_downs, 
                          max_channels=num_feats_max, norm=norm, 
                          use_dropout=False, outermost_linear=True,
-                         upsampling_mode='transpose')
+                         upsampling_mode='bilinear')
         
         init_weights(self.unet, init_type='normal')
         
@@ -254,7 +254,7 @@ class InversePropagation(nn.Module):
         slm_real = slm_field_encode[:,0:1,:,:]
         slm_imag = slm_field_encode[:,1:2,:,:]
         
-        use_complex = True
+        use_complex = False
         if use_complex:
             slm_complex = torch.complex(slm_real, slm_imag)
             slm_amp = slm_complex.abs()
