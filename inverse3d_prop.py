@@ -3,14 +3,12 @@ from torch import nn
 import numpy as np
 from unet import UnetGenerator, init_weights
 import utils
+from pytorch_prototyping.pytorch_prototyping import Unet
 
 import prop_ideal
 from algorithm import DPAC
 from propagation_ASM import propagation_ASM
 from model import Uformer
-
-from complexPyTorch.complexLayers import ComplexBatchNorm2d, ComplexConv2d, ComplexLinear, ComplexReLU, NaiveComplexBatchNorm2d
-
 
 #####################
 # U-Net Propagation #
@@ -24,9 +22,15 @@ class UNetProp(nn.Module):
         num_feats_min = 32
         num_feats_max = 512
         norm = nn.InstanceNorm2d
-        self.unet = UnetGenerator(input_nc= input_nc, output_nc=output_nc,
-                                    num_downs=num_downs, nf0=num_feats_min,
-                                    max_channels=num_feats_max, norm_layer=norm, outer_skip=True)
+        # self.unet = UnetGenerator(input_nc= input_nc, output_nc=output_nc,
+        #                             num_downs=num_downs, nf0=num_feats_min,
+        #                             max_channels=num_feats_max, norm_layer=norm, outer_skip=True)
+        self.unet = Unet(input_nc, output_nc, 
+                         nf0=num_feats_min, num_down=num_downs, 
+                         max_channels=num_feats_max, norm=norm, 
+                         use_dropout=False, outermost_linear=True,
+                         upsampling_mode='transpose')
+        
         init_weights(self.unet, init_type='normal')
         
         self.img_size = img_size
