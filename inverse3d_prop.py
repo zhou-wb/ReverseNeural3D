@@ -250,7 +250,7 @@ class InversePropagation(nn.Module):
         slm_real = slm_field_encode[:,0:1,:,:]
         slm_imag = slm_field_encode[:,1:2,:,:]
         
-        use_complex = True
+        use_complex = False
         if use_complex:
             slm_complex = torch.complex(slm_real, slm_imag)
             slm_amp = slm_complex.abs()
